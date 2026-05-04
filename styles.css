@@ -51,6 +51,161 @@ body {
     env(safe-area-inset-left);
 }
 
+/* ============================================================
+   LOCK SCREEN
+   ============================================================ */
+
+.lock-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.lock-screen[hidden] { display: none; }
+
+.lock-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 36px 32px 32px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  position: relative;
+  animation: lockIn 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@keyframes lockIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+.lock-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+.lock-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  font-variation-settings: "opsz" 144;
+  margin-bottom: 14px;
+}
+
+.lock-title em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.lock-subtitle {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 15.5px;
+  color: var(--text-muted);
+  margin-bottom: 26px;
+  letter-spacing: -0.005em;
+}
+
+.lock-form {
+  display: flex;
+  gap: 8px;
+}
+
+.lock-input {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 11px 14px;
+  border-radius: 8px;
+  outline: none;
+  letter-spacing: 0.05em;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  min-width: 0;
+}
+
+.lock-input::placeholder {
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.lock-input:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.lock-input.is-error {
+  border-color: var(--danger);
+  animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.lock-btn {
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  font-weight: 500;
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
+  padding: 0 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: -0.005em;
+  transition: background 0.15s ease, transform 0.08s ease;
+  white-space: nowrap;
+}
+
+.lock-btn:hover { background: var(--accent-bright); }
+.lock-btn:active { transform: scale(0.97); }
+.lock-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.lock-btn svg { transition: transform 0.15s ease; }
+.lock-btn:hover svg { transform: translateX(2px); }
+
+.lock-error {
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.lock-error[hidden] { display: none; }
+
+/* ============================================================
+   APP
+   ============================================================ */
+
 .app {
   max-width: 840px;
   margin: 0 auto;
@@ -60,7 +215,7 @@ body {
   flex-direction: column;
 }
 
-/* ---------- Header ---------- */
+.app[hidden] { display: none; }
 
 .header {
   padding: 32px 40px 22px;
@@ -111,6 +266,12 @@ body {
   margin-left: 4px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .header-count {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -125,14 +286,37 @@ body {
   text-align: center;
 }
 
+.header-lock {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.header-lock:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.header-lock:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ---------- Task list ---------- */
 
 .task-list {
   flex: 1;
   padding: 20px 28px 40px;
 }
-
-/* ---------- Task card ---------- */
 
 .task {
   display: grid;
@@ -173,8 +357,6 @@ body {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
-/* ---------- Checkbox ---------- */
 
 .task-check {
   appearance: none;
@@ -217,11 +399,19 @@ body {
   transform: translate(-50%, -65%) rotate(-45deg) scale(1);
 }
 
-/* ---------- Content ---------- */
-
-.task-content {
-  min-width: 0;
+.task-check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
+
+/* Disable the check button while the row is being edited so an
+   accidental click can't fire markDone and discard pending field edits. */
+.task.is-editing .task-check {
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+.task-content { min-width: 0; }
 
 .task-subject {
   font-size: 14.5px;
@@ -233,8 +423,6 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* ---------- Project pill ---------- */
 
 .task-project {
   font-family: var(--font-mono);
@@ -258,8 +446,6 @@ body {
   color: var(--text-dim);
 }
 
-/* ---------- Due date ---------- */
-
 .task-due {
   font-family: var(--font-mono);
   font-size: 11.5px;
@@ -273,8 +459,6 @@ body {
 
 .task-due.overdue { color: var(--danger); font-weight: 500; }
 .task-due.today   { color: var(--accent); font-weight: 500; }
-
-/* ---------- Edit button ---------- */
 
 .task-edit {
   width: 28px;
@@ -309,8 +493,6 @@ body {
 }
 
 .task.is-editing .task-edit { display: none; }
-
-/* ---------- Edit inputs ---------- */
 
 .task-input {
   font-family: var(--font-body);
@@ -356,8 +538,6 @@ body {
 
 .task-input--date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 
-/* ---------- Empty state ---------- */
-
 .empty-state {
   flex: 1;
   display: flex;
@@ -394,35 +574,271 @@ body {
 }
 
 /* ============================================================
-   MOBILE — narrow viewports get a stacked card layout,
-   always-visible edit button, larger touch targets.
+   UNDO TOAST
+   ============================================================ */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  width: calc(100% - 32px);
+  max-width: 380px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 11px;
+  overflow: hidden;
+  z-index: 100;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transform: translate(-50%, 16px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.28s cubic-bezier(0.2, 0.7, 0.3, 1);
+  pointer-events: none;
+}
+
+.toast[hidden] { display: none; }
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.toast-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 12px 12px 16px;
+}
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toast-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.toast-subject {
+  font-size: 13.5px;
+  font-weight: 450;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.005em;
+}
+
+.toast-undo {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent-border);
+  padding: 7px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  letter-spacing: -0.005em;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.toast-undo:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.toast-undo:active {
+  transform: scale(0.97);
+}
+
+.toast-undo:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Countdown bar — JS sets width: 100% on show, then animates to 0%. */
+.toast-progress {
+  height: 2px;
+  background: var(--accent);
+  width: 100%;
+  transform-origin: left;
+}
+
+/* ============================================================
+   EDIT SHEET (mobile bottom-sheet modal)
+   ============================================================ */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 200;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+.sheet-backdrop[hidden] { display: none; }
+.sheet-backdrop.is-visible { opacity: 1; }
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin-inline: auto;
+  width: 100%;
+  max-width: 520px;
+  z-index: 210;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-strong);
+  border-radius: 20px 20px 0 0;
+  padding: 12px 22px calc(28px + env(safe-area-inset-bottom));
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow-y: auto;
+  transform: translateY(100%);
+  transition: transform 0.32s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.sheet[hidden] { display: none; }
+.sheet.is-visible { transform: translateY(0); }
+
+.sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: var(--border-strong);
+  border-radius: 2px;
+  margin: 0 auto 18px;
+}
+
+.sheet-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  font-variation-settings: "opsz" 144;
+  margin-bottom: 22px;
+  color: var(--text);
+}
+
+.sheet-title em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.sheet-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sheet-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sheet-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.sheet-input {
+  font-family: var(--font-body);
+  /* 16px minimum prevents iOS Safari from zooming in on focus. */
+  font-size: 16px;
+  font-weight: 450;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 14px;
+  border-radius: 9px;
+  outline: none;
+  width: 100%;
+  letter-spacing: -0.005em;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.sheet-input:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.sheet-input--date {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  color-scheme: dark;
+}
+
+.sheet-input--date::-webkit-calendar-picker-indicator {
+  filter: invert(0.7) sepia(1) saturate(5) hue-rotate(0deg);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.sheet-input--date::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.sheet-btn {
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 500;
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
+  padding: 13px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  margin-top: 14px;
+  letter-spacing: -0.005em;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.sheet-btn:hover { background: var(--accent-bright); }
+.sheet-btn:active { transform: scale(0.98); }
+
+.sheet-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   MOBILE
    ============================================================ */
 
 @media (max-width: 600px) {
+  .header { padding: 24px 20px 18px; }
+  .header::after { left: 20px; right: 20px; }
+  .header-title { font-size: 30px; }
+  .header-eyebrow { font-size: 10px; letter-spacing: 0.2em; }
+  .task-list { padding: 14px 14px 32px; }
 
-  .header {
-    padding: 24px 20px 18px;
-  }
-
-  .header::after {
-    left: 20px;
-    right: 20px;
-  }
-
-  .header-title {
-    font-size: 30px;
-  }
-
-  .header-eyebrow {
-    font-size: 10px;
-    letter-spacing: 0.2em;
-  }
-
-  .task-list {
-    padding: 14px 14px 32px;
-  }
-
-  /* Two-row card: [check] [subject] [edit] / [_____ project | due _____] */
   .task {
     grid-template-columns: auto 1fr auto;
     grid-template-rows: auto auto;
@@ -432,66 +848,55 @@ body {
   }
 
   .task-check {
-    grid-row: 1;
-    grid-column: 1;
-    width: 22px;
-    height: 22px;
+    grid-row: 1; grid-column: 1;
+    width: 22px; height: 22px;
     align-self: center;
   }
 
-  .task-content {
-    grid-row: 1;
-    grid-column: 2;
-    align-self: center;
-  }
+  .task-content { grid-row: 1; grid-column: 2; align-self: center; }
 
   .task-subject {
     font-size: 15px;
-    white-space: normal;       /* allow wrap on small screens */
+    white-space: normal;
     overflow: visible;
     text-overflow: clip;
     line-height: 1.35;
   }
 
   .task-edit {
-    grid-row: 1;
-    grid-column: 3;
-    width: 34px;
-    height: 34px;
-    opacity: 1;                /* no hover on touch — always visible */
+    grid-row: 1; grid-column: 3;
+    width: 34px; height: 34px;
+    opacity: 1;
     transform: none;
     align-self: center;
   }
 
   .task-project {
-    grid-row: 2;
-    grid-column: 2;
+    grid-row: 2; grid-column: 2;
     justify-self: start;
     max-width: 100%;
   }
 
   .task-due {
-    grid-row: 2;
-    grid-column: 3;
+    grid-row: 2; grid-column: 3;
     min-width: 0;
     text-align: right;
   }
 
-  /* Edit-mode inputs need to fit the narrower grid */
-  .task-input--project {
-    width: 100%;
-    max-width: 200px;
-  }
+  .task-input--project { width: 100%; max-width: 200px; }
+  .task-input--date { width: auto; min-width: 130px; }
 
-  .task-input--date {
-    width: auto;
-    min-width: 130px;
+  .lock-card {
+    padding: 28px 22px 24px;
   }
+  .lock-title { font-size: 30px; }
 }
 
-/* Even smaller — make sure subject input fits */
 @media (max-width: 380px) {
   .header { padding: 20px 16px 16px; }
   .task-list { padding: 12px 12px 28px; }
   .task { column-gap: 10px; padding: 12px; }
+
+  .lock-form { flex-direction: column; }
+  .lock-btn { justify-content: center; padding: 11px 16px; }
 }
