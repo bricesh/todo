@@ -1,0 +1,497 @@
+:root {
+  --bg: #0d0d0f;
+  --bg-elevated: #131318;
+  --surface: #17171c;
+  --surface-hover: #1d1d24;
+  --border: #26262d;
+  --border-strong: #36363f;
+  --text: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --text-dim: #65656d;
+  --accent: #fbbf24;
+  --accent-bright: #fcd34d;
+  --accent-soft: rgba(251, 191, 36, 0.09);
+  --accent-border: rgba(251, 191, 36, 0.28);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.09);
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+body {
+  font-family: var(--font-body);
+  font-feature-settings: "ss01", "ss02";
+  color: var(--text);
+  background:
+    radial-gradient(ellipse 900px 300px at 50% -10%, rgba(251, 191, 36, 0.05), transparent 70%),
+    radial-gradient(ellipse 600px 400px at 100% 100%, rgba(99, 102, 241, 0.04), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  padding:
+    env(safe-area-inset-top)
+    env(safe-area-inset-right)
+    env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+.app {
+  max-width: 840px;
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Header ---------- */
+
+.header {
+  padding: 32px 40px 22px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.header::after {
+  content: '';
+  position: absolute;
+  left: 40px;
+  right: 40px;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-border), transparent);
+  opacity: 0.6;
+}
+
+.header-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.header-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.header-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  font-variation-settings: "opsz" 144;
+}
+
+.header-title em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.header-count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  padding: 5px 12px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  min-width: 36px;
+  text-align: center;
+}
+
+/* ---------- Task list ---------- */
+
+.task-list {
+  flex: 1;
+  padding: 20px 28px 40px;
+}
+
+/* ---------- Task card ---------- */
+
+.task {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 16px 14px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 6px;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  position: relative;
+  animation: slideIn 0.4s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+.task::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.task.is-today::before { background: var(--accent); }
+.task.is-overdue::before { background: var(--danger); }
+
+.task:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Checkbox ---------- */
+
+.task-check {
+  appearance: none;
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
+  border: 1.5px solid var(--border-strong);
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.task-check:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.task-check::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 5px;
+  border-left: 1.75px solid var(--bg);
+  border-bottom: 1.75px solid var(--bg);
+  transform: translate(-50%, -65%) rotate(-45deg) scale(0);
+  transition: transform 0.18s cubic-bezier(0.5, 1.5, 0.5, 1);
+}
+
+.task-check:active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.task-check:active::after {
+  transform: translate(-50%, -65%) rotate(-45deg) scale(1);
+}
+
+/* ---------- Content ---------- */
+
+.task-content {
+  min-width: 0;
+}
+
+.task-subject {
+  font-size: 14.5px;
+  font-weight: 450;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Project pill ---------- */
+
+.task-project {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  padding: 3px 9px;
+  border-radius: 5px;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-project:empty::before {
+  content: '—';
+  color: var(--text-dim);
+}
+
+/* ---------- Due date ---------- */
+
+.task-due {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  min-width: 80px;
+  text-align: right;
+}
+
+.task-due.overdue { color: var(--danger); font-weight: 500; }
+.task-due.today   { color: var(--accent); font-weight: 500; }
+
+/* ---------- Edit button ---------- */
+
+.task-edit {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.task:hover .task-edit {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.task-edit:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.task-edit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+.task.is-editing .task-edit { display: none; }
+
+/* ---------- Edit inputs ---------- */
+
+.task-input {
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  font-weight: 450;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 6px;
+  outline: none;
+  width: 100%;
+  letter-spacing: -0.005em;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.task-input:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.task-input--mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.task-input--project { width: 130px; }
+
+.task-input--date {
+  width: 138px;
+  color-scheme: dark;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.task-input--date::-webkit-calendar-picker-indicator {
+  filter: invert(0.7) sepia(1) saturate(5) hue-rotate(0deg);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.task-input--date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+/* ---------- Empty state ---------- */
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 80px 20px;
+}
+
+.empty-state[hidden] { display: none; }
+
+.empty-mark {
+  font-family: var(--font-display);
+  font-size: 56px;
+  color: var(--accent);
+  opacity: 0.5;
+  font-weight: 300;
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+.empty-state p {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 18px;
+  color: var(--text-muted);
+  letter-spacing: -0.01em;
+}
+
+/* ============================================================
+   MOBILE — narrow viewports get a stacked card layout,
+   always-visible edit button, larger touch targets.
+   ============================================================ */
+
+@media (max-width: 600px) {
+
+  .header {
+    padding: 24px 20px 18px;
+  }
+
+  .header::after {
+    left: 20px;
+    right: 20px;
+  }
+
+  .header-title {
+    font-size: 30px;
+  }
+
+  .header-eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+  }
+
+  .task-list {
+    padding: 14px 14px 32px;
+  }
+
+  /* Two-row card: [check] [subject] [edit] / [_____ project | due _____] */
+  .task {
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+    column-gap: 14px;
+    row-gap: 6px;
+    padding: 13px 14px 13px 16px;
+  }
+
+  .task-check {
+    grid-row: 1;
+    grid-column: 1;
+    width: 22px;
+    height: 22px;
+    align-self: center;
+  }
+
+  .task-content {
+    grid-row: 1;
+    grid-column: 2;
+    align-self: center;
+  }
+
+  .task-subject {
+    font-size: 15px;
+    white-space: normal;       /* allow wrap on small screens */
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.35;
+  }
+
+  .task-edit {
+    grid-row: 1;
+    grid-column: 3;
+    width: 34px;
+    height: 34px;
+    opacity: 1;                /* no hover on touch — always visible */
+    transform: none;
+    align-self: center;
+  }
+
+  .task-project {
+    grid-row: 2;
+    grid-column: 2;
+    justify-self: start;
+    max-width: 100%;
+  }
+
+  .task-due {
+    grid-row: 2;
+    grid-column: 3;
+    min-width: 0;
+    text-align: right;
+  }
+
+  /* Edit-mode inputs need to fit the narrower grid */
+  .task-input--project {
+    width: 100%;
+    max-width: 200px;
+  }
+
+  .task-input--date {
+    width: auto;
+    min-width: 130px;
+  }
+}
+
+/* Even smaller — make sure subject input fits */
+@media (max-width: 380px) {
+  .header { padding: 20px 16px 16px; }
+  .task-list { padding: 12px 12px 28px; }
+  .task { column-gap: 10px; padding: 12px; }
+}
