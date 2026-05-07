@@ -456,68 +456,111 @@ function setInlineEditMode(id) {
 }
 
 /* =========================================================================
-   Week view (landscape phones)
+   Landscape views (week + kanban pager)
    -------------------------------------------------------------------------
-   When the phone is in landscape, the body gets a .show-week-view class
-   that swaps the list for a 7-column week grid. The week starts at the
-   earliest pending task's due date and runs 7 days. Tasks without a
-   due_date are hidden from the week view.
+   When the phone is in landscape, body gets .show-landscape-views and
+   the .task-list is replaced by a horizontal pager containing two pages:
+   week view (calendar) and kanban view (project columns). The user
+   swipes left/right between them; scroll-snap handles the snapping.
 
-   Re-evaluated on orientation change AND on every render(), so a new
-   incoming task with an earlier due date can shift the week start.
+   Both views render from currentTasks. Tapping a task on either page
+   opens the same edit sheet used in portrait mode.
    ========================================================================= */
 
-const WEEK_VIEW_QUERY =
+const LANDSCAPE_QUERY =
 	'(orientation: landscape) and (max-width: 950px) and (max-height: 500px)';
 
-function isWeekViewActive() {
-	return window.matchMedia(WEEK_VIEW_QUERY).matches;
+function isLandscapeViewsActive() {
+	return window.matchMedia(LANDSCAPE_QUERY).matches;
 }
 
 function applyOrientationClass() {
-	document.body.classList.toggle('show-week-view', isWeekViewActive());
+	document.body.classList.toggle('show-landscape-views', isLandscapeViewsActive());
 }
 
-// Initial state + react to rotation
 applyOrientationClass();
-window.matchMedia(WEEK_VIEW_QUERY).addEventListener('change', () => {
+window.matchMedia(LANDSCAPE_QUERY).addEventListener('change', () => {
 	applyOrientationClass();
-	// Re-render so the week grid populates when entering landscape.
 	render();
+	// Reset to week view (page 0) on orientation flip.
+	const pager = document.getElementById('landscapePager');
+	if (pager) pager.scrollLeft = 0;
 });
 
+// Track which page is active so the dot indicator stays in sync.
+// Updated via scroll listener (debounced via rAF) on the pager.
+{
+	const pager = document.getElementById('landscapePager');
+	if (pager) {
+		let raf = null;
+		pager.addEventListener('scroll', () => {
+			if (raf) return;
+			raf = requestAnimationFrame(() => {
+				raf = null;
+				const pageWidth = pager.clientWidth;
+				if (!pageWidth) return;
+				const activePage = Math.round(pager.scrollLeft / pageWidth);
+				document.querySelectorAll('.landscape-dot').forEach((dot, i) => {
+					dot.classList.toggle('is-active', i === activePage);
+				});
+			});
+		}, { passive: true });
+	}
+}
+
 function isoDate(d) {
-	// YYYY-MM-DD in local time (Date.toISOString() is UTC and would shift
-	// dates near midnight to the wrong day for users east/west of UTC).
 	const y = d.getFullYear();
 	const m = String(d.getMonth() + 1).padStart(2, '0');
 	const day = String(d.getDate()).padStart(2, '0');
 	return `${y}-${m}-${day}`;
 }
 
+/* ---------- Shared task chip used in both week + kanban ---------- */
+
+function taskChipHtml(id, task, todayIso) {
+	const due = task.due_date;
+	let stateClass = '';
+	let metaText = '';
+
+	if (due) {
+		if (due < todayIso) stateClass = 'is-overdue';
+		else if (due === todayIso) stateClass = 'is-today';
+
+		// Compact meta: "May 12" / "Today" / "3d overdue"
+		metaText = formatDue(due).label;
+	}
+
+	return `<button class="lv-task ${stateClass}" type="button" data-id="${escapeHtml(id)}" title="${escapeHtml(task.subject || '')}">
+		<span class="lv-task-subject">${escapeHtml(task.subject || '')}</span>
+		${metaText ? `<span class="lv-task-meta">${escapeHtml(metaText)}</span>` : ''}
+	</button>`;
+}
+
+function wireTaskChips(rootEl) {
+	rootEl.querySelectorAll('.lv-task').forEach(btn => {
+		btn.addEventListener('click', () => openEditSheet(btn.dataset.id));
+	});
+}
+
+/* ---------- Week view ---------- */
+
 function renderWeekView(ids) {
 	const grid = document.getElementById('weekGrid');
 	grid.innerHTML = '';
 
-	// Tasks without a due date don't appear in the week view at all.
 	const dated = ids.filter(id => currentTasks[id].due_date);
 
-	// Determine week start: earliest pending due date, or today if no
-	// dated tasks exist (otherwise the empty week would render in 1970).
 	let startDate;
 	if (dated.length === 0) {
 		startDate = new Date();
 	} else {
-		const earliest = dated
-			.map(id => currentTasks[id].due_date)
-			.sort()[0];
+		const earliest = dated.map(id => currentTasks[id].due_date).sort()[0];
 		startDate = new Date(earliest + 'T00:00:00');
 	}
 	startDate.setHours(0, 0, 0, 0);
 
 	const todayIso = isoDate(new Date());
 
-	// Bucket tasks by due_date for O(n) placement.
 	const byDate = {};
 	dated.forEach(id => {
 		const d = currentTasks[id].due_date;
@@ -535,12 +578,9 @@ function renderWeekView(ids) {
 		const dow = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
 		const num = dayDate.getDate();
 
-		const tasksHtml = (byDate[dayIso] || [])
-			.map(id => {
-				const task = currentTasks[id];
-				const overdue = dayIso < todayIso;
-				return `<button class="week-task ${overdue ? 'is-overdue' : ''}" type="button" data-id="${escapeHtml(id)}" title="${escapeHtml(task.subject || '')}">${escapeHtml(task.subject || '')}</button>`;
-			})
+		const dayTaskIds = (byDate[dayIso] || []);
+		const tasksHtml = dayTaskIds
+			.map(id => taskChipHtml(id, currentTasks[id], todayIso))
 			.join('');
 
 		col.innerHTML = `
@@ -556,10 +596,61 @@ function renderWeekView(ids) {
 		grid.appendChild(col);
 	}
 
-	// Tap a task to open the edit sheet (which is the mobile editor).
-	grid.querySelectorAll('.week-task').forEach(btn => {
-		btn.addEventListener('click', () => openEditSheet(btn.dataset.id));
+	wireTaskChips(grid);
+}
+
+/* ---------- Kanban view ---------- */
+
+function renderKanbanView(ids) {
+	const board = document.getElementById('kanbanBoard');
+	board.innerHTML = '';
+
+	const todayIso = isoDate(new Date());
+
+	// Bucket by project. The empty-string key collects "no project" tasks.
+	const byProject = {};
+	ids.forEach(id => {
+		const project = (currentTasks[id].project || '').trim();
+		(byProject[project] = byProject[project] || []).push(id);
 	});
+
+	// Project columns: real projects sorted alphabetically, then "no project"
+	// at the end. Skipping "no project" if there are none.
+	const projectNames = Object.keys(byProject)
+		.filter(p => p !== '')
+		.sort((a, b) => a.localeCompare(b));
+
+	if (byProject['']) projectNames.push('');
+
+	// Sort each column: overdue/earliest due date first; undated tasks last.
+	const sortIds = (taskIds) => taskIds.sort((a, b) => {
+		const da = currentTasks[a].due_date || '9999-99-99';
+		const db = currentTasks[b].due_date || '9999-99-99';
+		return da.localeCompare(db);
+	});
+
+	projectNames.forEach(project => {
+		const colIds = sortIds(byProject[project].slice());
+		const col = document.createElement('div');
+		col.className = 'kanban-column' + (project === '' ? ' is-empty-project' : '');
+
+		const displayName = project || 'No project';
+		const tasksHtml = colIds
+			.map(id => taskChipHtml(id, currentTasks[id], todayIso))
+			.join('');
+
+		col.innerHTML = `
+			<div class="kanban-column-header">
+				<span class="kanban-column-name">${escapeHtml(displayName)}</span>
+				<span class="kanban-column-count">${colIds.length}</span>
+			</div>
+			<div class="kanban-column-tasks">${tasksHtml}</div>
+		`;
+
+		board.appendChild(col);
+	});
+
+	wireTaskChips(board);
 }
 
 /* =========================================================================
@@ -586,10 +677,11 @@ function render() {
 		.map(p => `<option value="${escapeHtml(p)}">`)
 		.join('');
 
-	// Week view (landscape phones) renders alongside the list. CSS hides
-	// whichever isn't appropriate for the current orientation.
-	if (isWeekViewActive()) {
+	// Landscape views (week + kanban pager) render alongside the list.
+	// CSS hides whichever isn't appropriate for the current orientation.
+	if (isLandscapeViewsActive()) {
 		renderWeekView(ids);
+		renderKanbanView(ids);
 	}
 
 	if (ids.length === 0) {

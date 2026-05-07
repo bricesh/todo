@@ -849,7 +849,11 @@ body {
   .task-list { padding: 14px 14px 32px; }
 
   .task {
-    grid-template-columns: auto 1fr auto;
+    /* Column 3 fixed at the pencil button's width (34px). The due date
+       on row 2 lives in column 3 and is right-aligned within that fixed
+       width, so longer due labels ("3d overdue") no longer push the
+       column wider and shift the pencil. */
+    grid-template-columns: auto 1fr 34px;
     grid-template-rows: auto auto;
     column-gap: 14px;
     row-gap: 6px;
@@ -862,7 +866,7 @@ body {
     align-self: center;
   }
 
-  .task-content { grid-row: 1; grid-column: 2; align-self: center; }
+  .task-content { grid-row: 1; grid-column: 2; align-self: center; min-width: 0; }
 
   .task-subject {
     font-size: 15px;
@@ -878,6 +882,7 @@ body {
     opacity: 1;
     transform: none;
     align-self: center;
+    justify-self: center;
   }
 
   .task-project {
@@ -886,8 +891,13 @@ body {
     max-width: 100%;
   }
 
+  /* Due date sits below the pencil. Spans into column 2 if it needs
+     more room than 34px (which "3d overdue" does), pushed right.
+     This keeps the pencil column sized independently. */
   .task-due {
-    grid-row: 2; grid-column: 3;
+    grid-row: 2;
+    grid-column: 2 / 4;
+    justify-self: end;
     width: auto;
     min-width: 0;
     text-align: right;
@@ -914,53 +924,104 @@ body {
 }
 
 /* ============================================================
-   WEEK VIEW — shown on phones in landscape orientation.
-   Hidden by default; the JS layer toggles a body class to switch.
-   The CSS below defines the visual; visibility is driven by
-   orientation-aware media queries plus the .show-week-view class.
+   LANDSCAPE VIEWS — week + kanban in a swipeable pager.
+   Shown on phones in landscape orientation. The pager is a
+   horizontally scroll-snapping container; each page fills the
+   visible area. The JS layer also wires programmatic snapping.
    ============================================================ */
 
-/* Default: never show the week view, never hide the list. */
-.week-view { display: none; }
+.landscape-views { display: none; }
 
-/* Phones in landscape: swap list for week view, slim down chrome. */
 @media (orientation: landscape) and (max-width: 950px) and (max-height: 500px) {
 
-  body.show-week-view .task-list,
-  body.show-week-view .empty-state {
+  body.show-landscape-views .task-list,
+  body.show-landscape-views .empty-state {
     display: none !important;
   }
 
-  body.show-week-view .week-view {
-    display: block;
+  body.show-landscape-views .landscape-views {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
 
-  /* Compact header — landscape phone height is precious. */
-  body.show-week-view .header {
+  body.show-landscape-views .header {
     padding: 12px 20px 10px;
   }
 
-  body.show-week-view .header-eyebrow {
+  body.show-landscape-views .header-eyebrow {
     margin-bottom: 4px;
   }
 
-  body.show-week-view .header-title {
+  body.show-landscape-views .header-title {
     font-size: 22px;
   }
 }
 
-.week-view {
+.landscape-pager {
   flex: 1;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   min-height: 0;
-  padding: 14px 16px 18px;
-  overflow: hidden;
 }
 
+.landscape-pager::-webkit-scrollbar { display: none; }
+
+.landscape-page {
+  flex: 0 0 100%;
+  width: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px 16px 4px;
+  position: relative;
+}
+
+.landscape-page-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  align-self: center;
+}
+
+.landscape-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0 8px;
+}
+
+.landscape-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.landscape-dot.is-active {
+  background: var(--accent);
+  transform: scale(1.15);
+}
+
+/* ---------- Week grid ---------- */
+
 .week-grid {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
-  height: 100%;
 }
 
 .week-day {
@@ -1003,9 +1064,7 @@ body {
   color: var(--text-dim);
 }
 
-.week-day.is-today .week-day-dow {
-  color: var(--accent);
-}
+.week-day.is-today .week-day-dow { color: var(--accent); }
 
 .week-day-num {
   font-family: var(--font-display);
@@ -1030,42 +1089,6 @@ body {
 .week-day-tasks::-webkit-scrollbar-track { background: transparent; }
 .week-day-tasks::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
 
-.week-task {
-  font-family: var(--font-body);
-  font-size: 11px;
-  line-height: 1.3;
-  font-weight: 450;
-  color: var(--text);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
-  border-radius: 5px;
-  padding: 5px 6px;
-  cursor: pointer;
-  text-align: left;
-  width: 100%;
-  letter-spacing: -0.005em;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.week-task.is-overdue {
-  border-left-color: var(--danger);
-}
-
-.week-task:hover, .week-task:active {
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
-}
-
-.week-task:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 .week-day-empty {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -1075,3 +1098,138 @@ body {
   letter-spacing: 0.05em;
   opacity: 0.5;
 }
+
+/* ---------- Kanban ---------- */
+
+.kanban-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.kanban-scroll::-webkit-scrollbar { display: none; }
+
+.kanban-board {
+  display: flex;
+  gap: 6px;
+  height: 100%;
+  /* Each column gets its own width; the strip scrolls horizontally
+     within the kanban page. The outer pager handles page snapping. */
+}
+
+.kanban-column {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.kanban-column.is-empty-project {
+  background: transparent;
+  border-style: dashed;
+}
+
+.kanban-column-header {
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kanban-column-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kanban-column.is-empty-project .kanban-column-name {
+  color: var(--text-dim);
+}
+
+.kanban-column-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.kanban-column-tasks {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kanban-column-tasks::-webkit-scrollbar { width: 4px; }
+.kanban-column-tasks::-webkit-scrollbar-track { background: transparent; }
+.kanban-column-tasks::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+/* ---------- Shared task chip used in both week + kanban ---------- */
+
+.lv-task {
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 450;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 5px;
+  padding: 5px 7px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  letter-spacing: -0.005em;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.lv-task.is-overdue { border-left-color: var(--danger); }
+.lv-task.is-today { border-left-color: var(--accent-bright); }
+
+.lv-task:hover, .lv-task:active {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.lv-task:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.lv-task-subject {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lv-task-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.lv-task.is-overdue .lv-task-meta { color: var(--danger); }
+.lv-task.is-today .lv-task-meta { color: var(--accent); }

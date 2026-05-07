@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Tasks</title>
 
   <meta name="theme-color" content="#0d0d0f">
@@ -67,10 +67,29 @@
 
     <main class="task-list" id="taskBody"></main>
 
-    <!-- Week view — shown on phones in landscape. Built on demand from the
-         same currentTasks data, so no extra Firebase calls. -->
-    <section class="week-view" id="weekView" hidden>
-      <div class="week-grid" id="weekGrid"></div>
+    <!-- Landscape views — week + kanban side-by-side in a horizontal pager.
+         Swipe left/right to switch. The .landscape-views container is the
+         viewport; .landscape-pager is the scroll-snap track holding both. -->
+    <section class="landscape-views" id="landscapeViews" hidden>
+      <div class="landscape-pager" id="landscapePager">
+
+        <div class="landscape-page" id="weekView">
+          <div class="landscape-page-label">WEEK</div>
+          <div class="week-grid" id="weekGrid"></div>
+        </div>
+
+        <div class="landscape-page" id="kanbanView">
+          <div class="landscape-page-label">PROJECTS</div>
+          <div class="kanban-scroll" id="kanbanScroll">
+            <div class="kanban-board" id="kanbanBoard"></div>
+          </div>
+        </div>
+
+      </div>
+      <div class="landscape-dots" aria-hidden="true">
+        <span class="landscape-dot is-active" data-page="0"></span>
+        <span class="landscape-dot" data-page="1"></span>
+      </div>
     </section>
 
     <div class="empty-state" id="emptyState" hidden>
