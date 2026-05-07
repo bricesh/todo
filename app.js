@@ -456,6 +456,113 @@ function setInlineEditMode(id) {
 }
 
 /* =========================================================================
+   Week view (landscape phones)
+   -------------------------------------------------------------------------
+   When the phone is in landscape, the body gets a .show-week-view class
+   that swaps the list for a 7-column week grid. The week starts at the
+   earliest pending task's due date and runs 7 days. Tasks without a
+   due_date are hidden from the week view.
+
+   Re-evaluated on orientation change AND on every render(), so a new
+   incoming task with an earlier due date can shift the week start.
+   ========================================================================= */
+
+const WEEK_VIEW_QUERY =
+	'(orientation: landscape) and (max-width: 950px) and (max-height: 500px)';
+
+function isWeekViewActive() {
+	return window.matchMedia(WEEK_VIEW_QUERY).matches;
+}
+
+function applyOrientationClass() {
+	document.body.classList.toggle('show-week-view', isWeekViewActive());
+}
+
+// Initial state + react to rotation
+applyOrientationClass();
+window.matchMedia(WEEK_VIEW_QUERY).addEventListener('change', () => {
+	applyOrientationClass();
+	// Re-render so the week grid populates when entering landscape.
+	render();
+});
+
+function isoDate(d) {
+	// YYYY-MM-DD in local time (Date.toISOString() is UTC and would shift
+	// dates near midnight to the wrong day for users east/west of UTC).
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, '0');
+	const day = String(d.getDate()).padStart(2, '0');
+	return `${y}-${m}-${day}`;
+}
+
+function renderWeekView(ids) {
+	const grid = document.getElementById('weekGrid');
+	grid.innerHTML = '';
+
+	// Tasks without a due date don't appear in the week view at all.
+	const dated = ids.filter(id => currentTasks[id].due_date);
+
+	// Determine week start: earliest pending due date, or today if no
+	// dated tasks exist (otherwise the empty week would render in 1970).
+	let startDate;
+	if (dated.length === 0) {
+		startDate = new Date();
+	} else {
+		const earliest = dated
+			.map(id => currentTasks[id].due_date)
+			.sort()[0];
+		startDate = new Date(earliest + 'T00:00:00');
+	}
+	startDate.setHours(0, 0, 0, 0);
+
+	const todayIso = isoDate(new Date());
+
+	// Bucket tasks by due_date for O(n) placement.
+	const byDate = {};
+	dated.forEach(id => {
+		const d = currentTasks[id].due_date;
+		(byDate[d] = byDate[d] || []).push(id);
+	});
+
+	for (let i = 0; i < 7; i++) {
+		const dayDate = new Date(startDate);
+		dayDate.setDate(startDate.getDate() + i);
+		const dayIso = isoDate(dayDate);
+
+		const col = document.createElement('div');
+		col.className = 'week-day' + (dayIso === todayIso ? ' is-today' : '');
+
+		const dow = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+		const num = dayDate.getDate();
+
+		const tasksHtml = (byDate[dayIso] || [])
+			.map(id => {
+				const task = currentTasks[id];
+				const overdue = dayIso < todayIso;
+				return `<button class="week-task ${overdue ? 'is-overdue' : ''}" type="button" data-id="${escapeHtml(id)}" title="${escapeHtml(task.subject || '')}">${escapeHtml(task.subject || '')}</button>`;
+			})
+			.join('');
+
+		col.innerHTML = `
+			<div class="week-day-header">
+				<span class="week-day-dow">${escapeHtml(dow)}</span>
+				<span class="week-day-num">${num}</span>
+			</div>
+			<div class="week-day-tasks">
+				${tasksHtml || '<div class="week-day-empty">—</div>'}
+			</div>
+		`;
+
+		grid.appendChild(col);
+	}
+
+	// Tap a task to open the edit sheet (which is the mobile editor).
+	grid.querySelectorAll('.week-task').forEach(btn => {
+		btn.addEventListener('click', () => openEditSheet(btn.dataset.id));
+	});
+}
+
+/* =========================================================================
    Render
    ========================================================================= */
 
@@ -473,19 +580,25 @@ function render() {
 	);
 	taskCount.textContent = ids.length;
 
-	if (ids.length === 0) {
-		taskBody.style.display = 'none';
-		emptyState.hidden = false;
-		listProjects.innerHTML = '';
-		return;
-	}
-	taskBody.style.display = '';
-	emptyState.hidden = true;
-
+	// Datalist always populated — used by both inline editor and edit sheet.
 	const projects = [...new Set(ids.map(id => currentTasks[id].project).filter(Boolean))];
 	listProjects.innerHTML = projects
 		.map(p => `<option value="${escapeHtml(p)}">`)
 		.join('');
+
+	// Week view (landscape phones) renders alongside the list. CSS hides
+	// whichever isn't appropriate for the current orientation.
+	if (isWeekViewActive()) {
+		renderWeekView(ids);
+	}
+
+	if (ids.length === 0) {
+		taskBody.style.display = 'none';
+		emptyState.hidden = false;
+		return;
+	}
+	taskBody.style.display = '';
+	emptyState.hidden = true;
 
 	ids.sort((a, b) => {
 		const da = currentTasks[a].due_date || '9999-99-99';

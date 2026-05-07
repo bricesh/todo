@@ -67,6 +67,12 @@
 
     <main class="task-list" id="taskBody"></main>
 
+    <!-- Week view — shown on phones in landscape. Built on demand from the
+         same currentTasks data, so no extra Firebase calls. -->
+    <section class="week-view" id="weekView" hidden>
+      <div class="week-grid" id="weekGrid"></div>
+    </section>
+
     <div class="empty-state" id="emptyState" hidden>
       <div class="empty-mark">✦</div>
       <p>All clear. Nothing pending.</p>
