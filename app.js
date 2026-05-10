@@ -321,6 +321,8 @@ function openEditSheet(id) {
 	document.getElementById('sheetSubject').value = task.subject  || '';
 	document.getElementById('sheetProject').value = task.project  || '';
 	document.getElementById('sheetDate').value    = task.due_date || '';
+	// notes is optional — older tasks in Firebase may not have the field at all.
+	document.getElementById('sheetNotes').value   = task.notes    || '';
 
 	const backdrop = document.getElementById('sheetBackdrop');
 	const sheet    = document.getElementById('sheet');
@@ -377,6 +379,9 @@ function commitEditSheet() {
 	const newSubject = document.getElementById('sheetSubject').value.trim();
 	const newProject = document.getElementById('sheetProject').value.trim();
 	const newDate    = document.getElementById('sheetDate').value;
+	// Notes: keep internal whitespace but trim leading/trailing — paragraph
+	// breaks inside the note are preserved.
+	const newNotes   = document.getElementById('sheetNotes').value.trim();
 
 	// Diff against the existing values so we don't write no-op updates
 	// (which would still trigger the live listener and re-render).
@@ -384,6 +389,7 @@ function commitEditSheet() {
 	if (newSubject !== (task.subject  || '')) updates.subject  = newSubject;
 	if (newProject !== (task.project  || '')) updates.project  = newProject;
 	if (newDate    !== (task.due_date || '')) updates.due_date = newDate;
+	if (newNotes   !== (task.notes    || '')) updates.notes    = newNotes;
 
 	if (Object.keys(updates).length > 0) {
 		updateField(id, updates);
@@ -419,6 +425,9 @@ function setInlineEditMode(id) {
 	const subjectVal = subjectEl ? subjectEl.textContent.trim() : '';
 	const projectVal = projectEl ? projectEl.textContent.trim() : '';
 	const dueVal     = (dueEl && dueEl.dataset.iso) ? dueEl.dataset.iso : '';
+	// Read notes from the source of truth (task data), not the DOM —
+	// notes don't render in the row so there's no DOM element to read.
+	const notesVal   = (currentTasks[id] && currentTasks[id].notes) || '';
 
 	subjectEl.outerHTML =
 		`<input class="task-input" type="text" id="subject${id}" value="${escapeHtml(subjectVal)}">`;
@@ -427,6 +436,20 @@ function setInlineEditMode(id) {
 	dueEl.outerHTML =
 		`<input class="task-input task-input--mono task-input--date" type="date" id="due${id}" value="${escapeHtml(dueVal)}">`;
 
+	// Append a notes editor row spanning the whole grid. Built as a
+	// separate element (not outerHTML) so we can attach the change
+	// listener directly without an id lookup.
+	const notesWrap = document.createElement('div');
+	notesWrap.className = 'task-notes-editor';
+	const notesTa = document.createElement('textarea');
+	notesTa.className = 'task-input task-input--notes';
+	notesTa.id = 'notes' + id;
+	notesTa.placeholder = 'Notes';
+	notesTa.rows = 3;
+	notesTa.value = notesVal;
+	notesWrap.appendChild(notesTa);
+	row.appendChild(notesWrap);
+
 	const subjectInput = document.getElementById("subject" + id);
 	const projectInput = document.getElementById("project" + id);
 	const dueInput     = document.getElementById("due" + id);
@@ -434,6 +457,12 @@ function setInlineEditMode(id) {
 	subjectInput.addEventListener("change", () => updateField(id, { subject: subjectInput.value }));
 	projectInput.addEventListener("change", () => updateField(id, { project: projectInput.value }));
 	dueInput.addEventListener("change",     () => updateField(id, { due_date: dueInput.value }));
+	// Notes save on blur (which is when 'change' fires for textareas).
+	notesTa.addEventListener("change", () => {
+		const newNotes = notesTa.value.trim();
+		const oldNotes = (currentTasks[id] && currentTasks[id].notes) || '';
+		if (newNotes !== oldNotes) updateField(id, { notes: newNotes });
+	});
 
 	row.addEventListener("focusout", () => {
 		setTimeout(() => {
@@ -450,6 +479,11 @@ function setInlineEditMode(id) {
 	subjectInput.addEventListener("keydown", commitOnEnter);
 	projectInput.addEventListener("keydown", commitOnEnter);
 	dueInput.addEventListener("keydown", commitOnEnter);
+	// Escape blurs the notes textarea (committing change, exiting edit).
+	// Enter inside the textarea adds a newline as expected.
+	notesTa.addEventListener("keydown", (e) => {
+		if (e.key === "Escape") notesTa.blur();
+	});
 
 	subjectInput.focus();
 	subjectInput.select();
@@ -709,10 +743,18 @@ function render() {
 		row.id = id;
 		row.style.animationDelay = `${Math.min(i * 25, 250)}ms`;
 
+		// Show a small notes indicator if the task has any non-whitespace
+		// notes content. Older tasks may not have a `notes` field at all.
+		const hasNotes = ((task.notes || '').trim() !== '');
+		const notesIndicator = hasNotes
+			? `<svg class="task-notes-indicator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Has notes"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>`
+			: '';
+
 		row.innerHTML = `
 			<button class="task-check" type="button" id="done${id}" aria-label="Mark done"></button>
 			<div class="task-content">
 				<div class="task-subject">${escapeHtml(task.subject || '')}</div>
+				${notesIndicator}
 			</div>
 			<span class="task-project">${escapeHtml(task.project || '')}</span>
 			<span class="task-due ${due.cls}" data-iso="${escapeHtml(task.due_date || '')}">${escapeHtml(due.label)}</span>

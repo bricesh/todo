@@ -415,7 +415,12 @@ body {
   opacity: 0.35;
 }
 
-.task-content { min-width: 0; }
+.task-content {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
 
 .task-subject {
   font-size: 14.5px;
@@ -426,6 +431,32 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Subtle indicator: a small page-with-line icon to the right of the subject
+   on tasks that have notes. Tasks without notes simply don't render it. */
+.task-notes-indicator {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--text-dim);
+  opacity: 0.65;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.task:hover .task-notes-indicator {
+  opacity: 0.95;
+  color: var(--accent);
+}
+
+/* When the row enters inline edit mode, the subject element is replaced
+   with a <input class="task-input">. It needs the same flex sizing so the
+   input fills the available space (alongside the notes indicator if any). */
+.task-content .task-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .task-project {
@@ -546,6 +577,24 @@ body {
 }
 
 .task-input--date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+/* Inline notes editor — added as a second row of the .task grid only
+   when the row is in edit mode. Spans all columns so the textarea has
+   room. Removed automatically when render() rebuilds the row on exit. */
+.task-notes-editor {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+
+.task-input--notes {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 64px;
+  max-height: 200px;
+  width: 100%;
+}
 
 .empty-state {
   flex: 1;
@@ -812,6 +861,15 @@ body {
 
 .sheet-input--date::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
+}
+
+.sheet-input--notes {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 96px;
+  max-height: 240px;
 }
 
 .sheet-btn {
