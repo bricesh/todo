@@ -38,7 +38,18 @@ auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(err => {
 
 let currentTasks = {};
 let isEditing = false;
-let liveQuery = null;   // active DB query so we can detach on sign-out
+let isSwiping = false;
+let liveQuery = null;
+
+// Auto-edit the next-rendered task. Used after createNewTask: we write
+// the empty task to Firebase, the listener fires, render() builds the
+// row, then setEditMode opens the editor on it.
+let pendingEditId = null;
+
+// Tasks created via the + button that haven't yet received a subject.
+// On edit-exit, if subject is still empty, the task is auto-deleted to
+// avoid littering the list with empty drafts.
+const newlyCreatedIds = new Set();   // active DB query so we can detach on sign-out
 
 /* =========================================================================
    Auth state — drives which screen is visible
@@ -136,7 +147,7 @@ function startListening() {
 	liveQuery = tasksRef.orderByChild('done').equalTo(false);
 	liveQuery.on('value', snap => {
 		currentTasks = snap.val() || {};
-		if (!isEditing) render();
+		if (!isEditing && !isSwiping) render();
 	}, err => {
 		console.error('DB listener error:', err);
 		// If the rules reject us, force sign-out so the user can re-authenticate.
@@ -213,6 +224,184 @@ function markDone(id) {
 
 	pendingUndo = { id };
 	showUndoToast(task.subject || '(untitled)');
+}
+
+/* =========================================================================
+   New task creation
+   -------------------------------------------------------------------------
+   Tap the FAB → create a Firebase task with empty subject, due tomorrow,
+   then auto-open the edit UI on it once the live listener brings it back
+   into render(). If the user closes the edit UI without entering a
+   subject, the task is removed to avoid leaving empty drafts behind.
+   ========================================================================= */
+
+function tomorrowIso() {
+	const t = new Date();
+	t.setDate(t.getDate() + 1);
+	return isoDate(t);
+}
+
+function createNewTask() {
+	const newRef = tasksRef.push();
+	const id = newRef.key;
+
+	newlyCreatedIds.add(id);
+	pendingEditId = id;
+
+	newRef.set({
+		subject: '',
+		project: '',
+		due_date: tomorrowIso(),
+		done: false
+	}).catch(err => {
+		console.error('createNewTask failed:', err);
+		newlyCreatedIds.delete(id);
+		pendingEditId = null;
+	});
+}
+
+// Called when an edit session ends. If the task was just created via
+// the FAB and the user didn't enter a subject, delete it so it doesn't
+// linger as an empty row.
+function cleanupEmptyNewTask(id, finalSubject) {
+	if (!newlyCreatedIds.has(id)) return;
+	newlyCreatedIds.delete(id);
+	if (!finalSubject || !finalSubject.trim()) {
+		tasksRef.child(id).remove().catch(err => {
+			console.error('cleanup failed:', err);
+		});
+	}
+}
+
+document.getElementById('fabAdd').addEventListener('click', createNewTask);
+
+/* =========================================================================
+   Snooze (swipe right to +1 day)
+   -------------------------------------------------------------------------
+   Pointer events unify touch + mouse. On pointerdown, we wait for the
+   first 8px of movement to decide intent: if it's clearly rightward and
+   horizontal, we capture the pointer and start dragging; otherwise we
+   release and let the page scroll. Past the 80px threshold the row
+   commits (slides off, snoozes); under it, the row springs back.
+
+   isSwiping suppresses live-listener re-renders during the gesture so
+   the in-flight DOM isn't yanked away mid-drag.
+   ========================================================================= */
+
+const SNOOZE_THRESHOLD_PX = 80;
+const SWIPE_AXIS_DEADZONE_PX = 8;
+
+function snoozeOneDay(id) {
+	const task = currentTasks[id];
+	if (!task) return;
+	let newDate;
+	if (task.due_date) {
+		// Increment existing due date by one day.
+		const d = new Date(task.due_date + 'T00:00:00');
+		d.setDate(d.getDate() + 1);
+		newDate = isoDate(d);
+	} else {
+		// Tasks with no due date: setting to tomorrow is the sensible
+		// "snooze" — gives the task a slot in the schedule.
+		newDate = tomorrowIso();
+	}
+	updateField(id, { due_date: newDate });
+}
+
+function attachSwipeHandlers(taskEl, id) {
+	let startX = 0, startY = 0, dx = 0;
+	let phase = 'idle';            // 'idle' | 'pending' | 'dragging'
+	let activePointerId = null;
+
+	const reset = () => {
+		phase = 'idle';
+		activePointerId = null;
+		dx = 0;
+	};
+
+	taskEl.addEventListener('pointerdown', (e) => {
+		if (phase !== 'idle') return;
+		if (e.button !== undefined && e.button !== 0) return;   // primary button only
+		// Don't start swipes from interactive children — those have their
+		// own handlers (checkbox toggle, edit button, notes editor).
+		if (e.target.closest('.task-check, .task-edit, .task-input, .task-notes-editor')) return;
+		// Already in edit mode? No swipe.
+		if (taskEl.classList.contains('is-editing')) return;
+
+		startX = e.clientX;
+		startY = e.clientY;
+		dx = 0;
+		phase = 'pending';
+		activePointerId = e.pointerId;
+	});
+
+	taskEl.addEventListener('pointermove', (e) => {
+		if (e.pointerId !== activePointerId) return;
+		const cdx = e.clientX - startX;
+		const cdy = e.clientY - startY;
+
+		if (phase === 'pending') {
+			// Wait for a non-trivial move before deciding axis.
+			if (Math.abs(cdx) < SWIPE_AXIS_DEADZONE_PX &&
+			    Math.abs(cdy) < SWIPE_AXIS_DEADZONE_PX) return;
+
+			// Right-swipe only: horizontal, rightward.
+			if (cdx > 0 && Math.abs(cdx) > Math.abs(cdy)) {
+				phase = 'dragging';
+				isSwiping = true;
+				try { taskEl.setPointerCapture(activePointerId); } catch (_) {}
+				taskEl.classList.add('is-swiping');
+			} else {
+				// Vertical (page scroll) or leftward — abandon.
+				reset();
+				return;
+			}
+		}
+
+		if (phase === 'dragging') {
+			dx = Math.max(0, cdx);
+			taskEl.style.transform = `translateX(${dx}px)`;
+			taskEl.classList.toggle('is-snooze-ready', dx >= SNOOZE_THRESHOLD_PX);
+			e.preventDefault();
+		}
+	});
+
+	const endDrag = (e) => {
+		if (e.pointerId !== activePointerId) return;
+		if (phase !== 'dragging') { reset(); return; }
+
+		const committed = dx >= SNOOZE_THRESHOLD_PX;
+		taskEl.classList.remove('is-swiping', 'is-snooze-ready');
+		try { taskEl.releasePointerCapture(activePointerId); } catch (_) {}
+
+		if (committed) {
+			// Slide off + fade, then snooze. Live listener re-renders
+			// the list with the task in its new position.
+			taskEl.classList.add('is-swipe-commit');
+			taskEl.style.transform = 'translateX(120%)';
+			setTimeout(() => {
+				snoozeOneDay(id);
+				// Allow re-renders once the write is on its way.
+				isSwiping = false;
+			}, 240);
+		} else {
+			// Spring back. Clear inline transform so the row returns to its
+			// resting position, then drop the transition class.
+			taskEl.classList.add('is-swipe-resetting');
+			taskEl.style.transform = '';
+			setTimeout(() => {
+				taskEl.classList.remove('is-swipe-resetting');
+				isSwiping = false;
+			}, 230);
+		}
+		// phase will be reset by reset() below; clear pointer state now.
+		phase = 'idle';
+		activePointerId = null;
+		dx = 0;
+	};
+
+	taskEl.addEventListener('pointerup', endDrag);
+	taskEl.addEventListener('pointercancel', endDrag);
 }
 
 /* =========================================================================
@@ -351,7 +540,16 @@ function openEditSheet(id) {
 function closeEditSheet({ save = true } = {}) {
 	if (!sheetTaskId) return;
 
+	const id = sheetTaskId;
+
+	// Capture final subject before commit so we can decide whether a
+	// just-created task should be auto-deleted.
+	const subjectInput = document.getElementById('sheetSubject');
+	const finalSubject = subjectInput ? subjectInput.value : '';
+
 	if (save) commitEditSheet();
+
+	cleanupEmptyNewTask(id, finalSubject);
 
 	sheetTaskId = null;
 
@@ -471,6 +669,11 @@ function setInlineEditMode(id) {
 		setTimeout(() => {
 			if (!row.contains(document.activeElement)) {
 				isEditing = false;
+				// Read the input directly (not currentTasks, which may not
+				// have echoed back the latest typed value yet).
+				const subjectInputEl = document.getElementById("subject" + id);
+				const finalSubject = subjectInputEl ? subjectInputEl.value : '';
+				cleanupEmptyNewTask(id, finalSubject);
 				render();
 			}
 		}, 120);
@@ -824,5 +1027,15 @@ function render() {
 
 		document.getElementById("done" + id).addEventListener("click", () => markDone(id));
 		document.getElementById("edit" + id).addEventListener("click", () => setEditMode(id));
+		attachSwipeHandlers(row, id);
 	});
+
+	// If a task was just created via the FAB, open its editor now that
+	// the row is in the DOM. Done after the loop so all rows are wired.
+	if (pendingEditId && document.getElementById(pendingEditId)) {
+		const id = pendingEditId;
+		pendingEditId = null;
+		// Defer one tick so any in-flight render work settles first.
+		setTimeout(() => setEditMode(id), 0);
+	}
 }

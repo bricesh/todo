@@ -335,6 +335,36 @@ body {
   transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
   position: relative;
   animation: slideIn 0.4s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+  /* Swipe-right gesture: allow vertical pan (page scroll) but capture
+     horizontal pan so we can drive snooze. user-select off so dragging
+     doesn't accidentally select the subject text. */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* During an active swipe, suppress the default transform transition so
+   the row follows the pointer in real time. */
+.task.is-swiping {
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+/* Past the snooze threshold, brighten the border so the user knows
+   releasing now will commit. */
+.task.is-snooze-ready {
+  border-color: var(--accent);
+}
+
+/* Spring back when the user releases below threshold. */
+.task.is-swipe-resetting {
+  transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* Slide-and-fade out when commit fires. The live listener will rebuild
+   the list from the snoozed data shortly after. */
+.task.is-swipe-commit {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  opacity: 0;
 }
 
 .task::before {
@@ -894,6 +924,54 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ============================================================
+   FLOATING ACTION BUTTON (new task)
+   ============================================================ */
+
+.fab {
+  position: fixed;
+  right: calc(22px + env(safe-area-inset-right));
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  z-index: 50;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.4),
+    0 2px 6px rgba(251, 191, 36, 0.2);
+  transition:
+    transform 0.15s cubic-bezier(0.2, 0.7, 0.3, 1),
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.fab:hover {
+  background: var(--accent-bright);
+  transform: translateY(-1px);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(251, 191, 36, 0.3);
+}
+
+.fab:active { transform: scale(0.94); }
+
+.fab:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+/* Hide FAB when landscape views are showing — the kanban columns
+   extend to the bottom-right of the screen and the FAB would
+   overlap them. Add new tasks from portrait. */
+body.show-landscape-views .fab { display: none; }
 
 /* ============================================================
    MOBILE
