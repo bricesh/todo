@@ -521,21 +521,40 @@ applyOrientationClass();
 window.matchMedia(LANDSCAPE_QUERY).addEventListener('change', () => {
 	applyOrientationClass();
 	render();
-
-	// Reset all scroll positions so the new orientation always starts
-	// at the top. Without this, an arbitrary scrollY from the portrait
-	// list carries over to landscape (showing the bottom of the week
-	// view), and vice versa on the way back.
-	window.scrollTo(0, 0);
-	const pager = document.getElementById('landscapePager');
-	if (pager) pager.scrollLeft = 0;     // back to week page
-	resetInnerScrolls();
+	// iOS Safari restores scroll position AFTER our handler fires on
+	// rotation, undoing a single reset. Fire reset at multiple timings
+	// (now, next frame, post-settle) to win the race. The repeated
+	// resets are no-ops if the user hasn't scrolled in between.
+	resetAllScrolls();
+	requestAnimationFrame(resetAllScrolls);
+	setTimeout(resetAllScrolls, 100);
+	setTimeout(resetAllScrolls, 350);
 });
 
-// Reset all vertical/horizontal scroll positions inside the landscape
-// view pages (per-day columns in week view, per-project columns in
-// kanban, and kanban's horizontal scroll strip). Used both on rotation
-// and on page-switch.
+// Also listen to orientationchange directly. matchMedia 'change' fires
+// at media-query flip time, but orientationchange fires after layout
+// settles — a better moment to scroll-reset.
+window.addEventListener('orientationchange', () => {
+	requestAnimationFrame(resetAllScrolls);
+	setTimeout(resetAllScrolls, 100);
+});
+
+function resetAllScrolls() {
+	// Window scroll (portrait list lives here — .task-list has no
+	// overflow, so the body itself is the scroll container).
+	window.scrollTo(0, 0);
+	document.documentElement.scrollTop = 0;
+	document.body.scrollTop = 0;
+
+	// Pager: back to first page (week view).
+	const pager = document.getElementById('landscapePager');
+	if (pager) pager.scrollLeft = 0;
+
+	resetInnerScrolls();
+}
+
+// Reset vertical scrolls inside week-day columns and kanban columns,
+// plus the kanban page's horizontal scroll strip.
 function resetInnerScrolls() {
 	document.querySelectorAll('.week-day-tasks, .kanban-column-tasks').forEach(el => {
 		el.scrollTop = 0;
@@ -565,7 +584,12 @@ function resetInnerScrolls() {
 				});
 				if (activePage !== lastActivePage) {
 					lastActivePage = activePage;
+					// Reset inner scrolls now and once more after the
+					// snap settles. The snap animation is ~250ms on iOS;
+					// resetting after gives a clean starting state even
+					// if the destination page had stale scroll positions.
 					resetInnerScrolls();
+					setTimeout(resetInnerScrolls, 300);
 				}
 			});
 		}, { passive: true });
