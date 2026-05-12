@@ -336,12 +336,15 @@ function openEditSheet(id) {
 	backdrop.classList.add('is-visible');
 	sheet.classList.add('is-visible');
 
-	// Focus the subject after the slide-up settles. Selecting all the text
-	// makes "edit and replace" workflows fast.
+	// Focus the subject after the slide-up settles. Cursor goes to the
+	// end of the existing text — placing the caret at end is the usual
+	// "edit, don't replace" expectation, especially on mobile where
+	// select-all immediately followed by a tap-character wipes the field.
 	setTimeout(() => {
 		const input = document.getElementById('sheetSubject');
 		input.focus();
-		input.select();
+		const len = input.value.length;
+		try { input.setSelectionRange(len, len); } catch (_) {}
 	}, 340);
 }
 
@@ -486,7 +489,9 @@ function setInlineEditMode(id) {
 	});
 
 	subjectInput.focus();
-	subjectInput.select();
+	// Cursor at end of existing text — see openEditSheet for rationale.
+	const subLen = subjectInput.value.length;
+	try { subjectInput.setSelectionRange(subLen, subLen); } catch (_) {}
 }
 
 /* =========================================================================
@@ -516,17 +521,38 @@ applyOrientationClass();
 window.matchMedia(LANDSCAPE_QUERY).addEventListener('change', () => {
 	applyOrientationClass();
 	render();
-	// Reset to week view (page 0) on orientation flip.
+
+	// Reset all scroll positions so the new orientation always starts
+	// at the top. Without this, an arbitrary scrollY from the portrait
+	// list carries over to landscape (showing the bottom of the week
+	// view), and vice versa on the way back.
+	window.scrollTo(0, 0);
 	const pager = document.getElementById('landscapePager');
-	if (pager) pager.scrollLeft = 0;
+	if (pager) pager.scrollLeft = 0;     // back to week page
+	resetInnerScrolls();
 });
 
+// Reset all vertical/horizontal scroll positions inside the landscape
+// view pages (per-day columns in week view, per-project columns in
+// kanban, and kanban's horizontal scroll strip). Used both on rotation
+// and on page-switch.
+function resetInnerScrolls() {
+	document.querySelectorAll('.week-day-tasks, .kanban-column-tasks').forEach(el => {
+		el.scrollTop = 0;
+	});
+	const kanbanScroll = document.getElementById('kanbanScroll');
+	if (kanbanScroll) kanbanScroll.scrollLeft = 0;
+}
+
 // Track which page is active so the dot indicator stays in sync.
-// Updated via scroll listener (debounced via rAF) on the pager.
+// Updated via scroll listener (debounced via rAF) on the pager. We also
+// reset inner scroll positions when the active page changes, so e.g.
+// swiping from week → kanban starts kanban at the leftmost column.
 {
 	const pager = document.getElementById('landscapePager');
 	if (pager) {
 		let raf = null;
+		let lastActivePage = 0;
 		pager.addEventListener('scroll', () => {
 			if (raf) return;
 			raf = requestAnimationFrame(() => {
@@ -537,6 +563,10 @@ window.matchMedia(LANDSCAPE_QUERY).addEventListener('change', () => {
 				document.querySelectorAll('.landscape-dot').forEach((dot, i) => {
 					dot.classList.toggle('is-active', i === activePage);
 				});
+				if (activePage !== lastActivePage) {
+					lastActivePage = activePage;
+					resetInnerScrolls();
+				}
 			});
 		}, { passive: true });
 	}
