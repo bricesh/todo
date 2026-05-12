@@ -380,9 +380,12 @@ function attachSwipeHandlers(taskEl, id) {
 			taskEl.classList.add('is-swipe-commit');
 			taskEl.style.transform = 'translateX(120%)';
 			setTimeout(() => {
-				snoozeOneDay(id);
-				// Allow re-renders once the write is on its way.
+				// Clear isSwiping BEFORE the write. Firebase's local
+				// cache fires the listener synchronously on .update(),
+				// so if isSwiping were still true we'd suppress the
+				// re-render that should reposition the task.
 				isSwiping = false;
+				snoozeOneDay(id);
 			}, 240);
 		} else {
 			// Spring back. Clear inline transform so the row returns to its
