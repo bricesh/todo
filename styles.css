@@ -465,6 +465,24 @@ body {
   flex: 1;
 }
 
+/* Time chip after the subject — subtle, monospace, separated by · */
+.task-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.task-time::before {
+  content: '· ';
+  color: var(--text-dim);
+  opacity: 0.6;
+  margin-right: 2px;
+}
+
 /* Subtle indicator: a small page-with-line icon to the right of the subject
    on tasks that have notes. Tasks without notes simply don't render it. */
 .task-notes-indicator {
@@ -600,6 +618,20 @@ body {
   letter-spacing: 0.02em;
 }
 
+.task-input--time {
+  width: 100px;
+  color-scheme: dark;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+/* In inline edit mode the time input lives in column 5 (the pencil
+   slot, which is display:none in edit mode). Explicit placement keeps
+   auto-flow from putting it anywhere weird if other rules shift. */
+.task.is-editing .task-input--time {
+  grid-column: 5;
+}
+
 .task-input--date::-webkit-calendar-picker-indicator {
   filter: invert(0.7) sepia(1) saturate(5) hue-rotate(0deg);
   cursor: pointer;
@@ -607,6 +639,13 @@ body {
 }
 
 .task-input--date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+.task-input--time::-webkit-calendar-picker-indicator {
+  filter: invert(0.7) sepia(1) saturate(5) hue-rotate(0deg);
+  cursor: pointer;
+  opacity: 0.7;
+}
+.task-input--time::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 
 /* Inline notes editor — added as a second row of the .task grid only
    when the row is in edit mode. Spans all columns so the textarea has
@@ -890,6 +929,23 @@ body {
 }
 
 .sheet-input--date::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.sheet-input--time {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  color-scheme: dark;
+}
+
+.sheet-input--time::-webkit-calendar-picker-indicator {
+  filter: invert(0.7) sepia(1) saturate(5) hue-rotate(0deg);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.sheet-input--time::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
 

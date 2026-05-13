@@ -206,6 +206,20 @@ function formatDue(isoDate) {
 	return { label, cls, state };
 }
 
+// Sort comparator: by due_date asc, then by due_time asc within the
+// same date. Tasks without a date sink to the bottom; within a given
+// date, tasks without a time also sink (sentinel "99:99" sorts last
+// since "0"-"9" all precede ":").
+function compareTasksByDueDateTime(a, b) {
+	const ta = currentTasks[a], tb = currentTasks[b];
+	const da = ta.due_date || '9999-99-99';
+	const db = tb.due_date || '9999-99-99';
+	if (da !== db) return da.localeCompare(db);
+	const tma = ta.due_time || '99:99';
+	const tmb = tb.due_time || '99:99';
+	return tma.localeCompare(tmb);
+}
+
 function updateField(id, fields) {
 	return tasksRef.child(id).update(fields).catch(err => {
 		console.error('update failed:', err);
@@ -513,7 +527,9 @@ function openEditSheet(id) {
 	document.getElementById('sheetSubject').value = task.subject  || '';
 	document.getElementById('sheetProject').value = task.project  || '';
 	document.getElementById('sheetDate').value    = task.due_date || '';
-	// notes is optional — older tasks in Firebase may not have the field at all.
+	// due_time and notes are optional — older tasks in Firebase may not
+	// have either field. `|| ''` collapses missing/null/undefined to empty.
+	document.getElementById('sheetTime').value    = task.due_time || '';
 	document.getElementById('sheetNotes').value   = task.notes    || '';
 
 	const backdrop = document.getElementById('sheetBackdrop');
@@ -583,6 +599,7 @@ function commitEditSheet() {
 	const newSubject = document.getElementById('sheetSubject').value.trim();
 	const newProject = document.getElementById('sheetProject').value.trim();
 	const newDate    = document.getElementById('sheetDate').value;
+	const newTime    = document.getElementById('sheetTime').value;
 	// Notes: keep internal whitespace but trim leading/trailing — paragraph
 	// breaks inside the note are preserved.
 	const newNotes   = document.getElementById('sheetNotes').value.trim();
@@ -593,6 +610,7 @@ function commitEditSheet() {
 	if (newSubject !== (task.subject  || '')) updates.subject  = newSubject;
 	if (newProject !== (task.project  || '')) updates.project  = newProject;
 	if (newDate    !== (task.due_date || '')) updates.due_date = newDate;
+	if (newTime    !== (task.due_time || '')) updates.due_time = newTime;
 	if (newNotes   !== (task.notes    || '')) updates.notes    = newNotes;
 
 	if (Object.keys(updates).length > 0) {
@@ -625,13 +643,16 @@ function setInlineEditMode(id) {
 	const subjectEl = row.querySelector('.task-subject');
 	const projectEl = row.querySelector('.task-project');
 	const dueEl     = row.querySelector('.task-due');
+	const timeEl    = row.querySelector('.task-time');   // may be null
 
 	const subjectVal = subjectEl ? subjectEl.textContent.trim() : '';
 	const projectVal = projectEl ? projectEl.textContent.trim() : '';
 	const dueVal     = (dueEl && dueEl.dataset.iso) ? dueEl.dataset.iso : '';
-	// Read notes from the source of truth (task data), not the DOM —
-	// notes don't render in the row so there's no DOM element to read.
+	// Read notes + time from source of truth — time may not render in
+	// the row, and even when it does we want HH:MM not the formatted
+	// version (formatting is identical here but data-* is canonical).
 	const notesVal   = (currentTasks[id] && currentTasks[id].notes) || '';
+	const timeVal    = (currentTasks[id] && currentTasks[id].due_time) || '';
 
 	subjectEl.outerHTML =
 		`<input class="task-input" type="text" id="subject${id}" value="${escapeHtml(subjectVal)}">`;
@@ -639,6 +660,20 @@ function setInlineEditMode(id) {
 		`<input class="task-input task-input--mono task-input--project" list="listProjects" id="project${id}" value="${escapeHtml(projectVal)}" placeholder="Project">`;
 	dueEl.outerHTML =
 		`<input class="task-input task-input--mono task-input--date" type="date" id="due${id}" value="${escapeHtml(dueVal)}">`;
+
+	// Replace or remove the optional time chip. It may not exist in the
+	// DOM (only rendered when due_time is set), so we insert next to the
+	// date input either way to keep layout consistent during editing.
+	if (timeEl) timeEl.remove();
+	const newDateInput = document.getElementById("due" + id);
+	const timeInput = document.createElement('input');
+	timeInput.type = 'time';
+	timeInput.className = 'task-input task-input--mono task-input--time';
+	timeInput.id = 'time' + id;
+	timeInput.value = timeVal;
+	timeInput.lang = 'en-GB';            // force 24h display
+	timeInput.placeholder = '—';
+	newDateInput.insertAdjacentElement('afterend', timeInput);
 
 	// Append a notes editor row spanning the whole grid. Built as a
 	// separate element (not outerHTML) so we can attach the change
@@ -661,6 +696,11 @@ function setInlineEditMode(id) {
 	subjectInput.addEventListener("change", () => updateField(id, { subject: subjectInput.value }));
 	projectInput.addEventListener("change", () => updateField(id, { project: projectInput.value }));
 	dueInput.addEventListener("change",     () => updateField(id, { due_date: dueInput.value }));
+	timeInput.addEventListener("change", () => {
+		const newTime = timeInput.value;
+		const oldTime = (currentTasks[id] && currentTasks[id].due_time) || '';
+		if (newTime !== oldTime) updateField(id, { due_time: newTime });
+	});
 	// Notes save on blur (which is when 'change' fires for textareas).
 	notesTa.addEventListener("change", () => {
 		const newNotes = notesTa.value.trim();
@@ -688,6 +728,7 @@ function setInlineEditMode(id) {
 	subjectInput.addEventListener("keydown", commitOnEnter);
 	projectInput.addEventListener("keydown", commitOnEnter);
 	dueInput.addEventListener("keydown", commitOnEnter);
+	timeInput.addEventListener("keydown", commitOnEnter);
 	// Escape blurs the notes textarea (committing change, exiting edit).
 	// Enter inside the textarea adds a newline as expected.
 	notesTa.addEventListener("keydown", (e) => {
@@ -824,8 +865,13 @@ function taskChipHtml(id, task, todayIso) {
 		metaText = formatDue(due).label;
 	}
 
-	return `<button class="lv-task ${stateClass}" type="button" data-id="${escapeHtml(id)}" title="${escapeHtml(task.subject || '')}">
-		<span class="lv-task-subject">${escapeHtml(task.subject || '')}</span>
+	// Concatenate time after subject if present: "Review docket · 14:30".
+	// Older tasks without a due_time field render as just the subject.
+	const subjectText = (task.subject || '') +
+		(task.due_time ? ` · ${task.due_time}` : '');
+
+	return `<button class="lv-task ${stateClass}" type="button" data-id="${escapeHtml(id)}" title="${escapeHtml(subjectText)}">
+		<span class="lv-task-subject">${escapeHtml(subjectText)}</span>
 		${metaText ? `<span class="lv-task-meta">${escapeHtml(metaText)}</span>` : ''}
 	</button>`;
 }
@@ -916,12 +962,8 @@ function renderKanbanView(ids) {
 
 	if (byProject['']) projectNames.push('');
 
-	// Sort each column: overdue/earliest due date first; undated tasks last.
-	const sortIds = (taskIds) => taskIds.sort((a, b) => {
-		const da = currentTasks[a].due_date || '9999-99-99';
-		const db = currentTasks[b].due_date || '9999-99-99';
-		return da.localeCompare(db);
-	});
+	// Sort each column: by due_date then due_time, undated tasks last.
+	const sortIds = (taskIds) => taskIds.sort(compareTasksByDueDateTime);
 
 	projectNames.forEach(project => {
 		const colIds = sortIds(byProject[project].slice());
@@ -986,11 +1028,7 @@ function render() {
 	taskBody.style.display = '';
 	emptyState.hidden = true;
 
-	ids.sort((a, b) => {
-		const da = currentTasks[a].due_date || '9999-99-99';
-		const db = currentTasks[b].due_date || '9999-99-99';
-		return da.localeCompare(db);
-	});
+	ids.sort(compareTasksByDueDateTime);
 
 	taskBody.innerHTML = '';
 
@@ -1010,10 +1048,18 @@ function render() {
 			? `<svg class="task-notes-indicator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Has notes"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>`
 			: '';
 
+		// Optional time chip after the subject. Tasks without due_time
+		// render no chip at all (no element, no whitespace).
+		const timeStr = task.due_time || '';
+		const timeChip = timeStr
+			? `<span class="task-time">${escapeHtml(timeStr)}</span>`
+			: '';
+
 		row.innerHTML = `
 			<button class="task-check" type="button" id="done${id}" aria-label="Mark done"></button>
 			<div class="task-content">
 				<div class="task-subject">${escapeHtml(task.subject || '')}</div>
+				${timeChip}
 				${notesIndicator}
 			</div>
 			<span class="task-project">${escapeHtml(task.project || '')}</span>
