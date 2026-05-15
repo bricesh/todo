@@ -865,10 +865,10 @@ function taskChipHtml(id, task, todayIso) {
 		metaText = formatDue(due).label;
 	}
 
-	// Concatenate time after subject if present: "Review docket · 14:30".
+	// Concatenate time after subject if present: "Review docket 14:30".
 	// Older tasks without a due_time field render as just the subject.
 	const subjectText = (task.subject || '') +
-		(task.due_time ? ` · ${task.due_time}` : '');
+		(task.due_time ? ` ${task.due_time}` : '');
 
 	return `<button class="lv-task ${stateClass}" type="button" data-id="${escapeHtml(id)}" title="${escapeHtml(subjectText)}">
 		<span class="lv-task-subject">${escapeHtml(subjectText)}</span>
