@@ -226,6 +226,57 @@ function updateField(id, fields) {
 	});
 }
 
+/* =========================================================================
+   Checklist helpers
+   -------------------------------------------------------------------------
+   Stored on a task as `task.checklist = [{text, done}, ...]`. Firebase
+   RTDB doesn't store JS arrays natively — they round-trip as objects
+   keyed by stringified indices. normalizeChecklist handles both shapes
+   so we can read defensively regardless of how the data was last
+   written. Tasks without a checklist field return [].
+   ========================================================================= */
+
+function normalizeChecklist(raw) {
+	if (!raw) return [];
+	// Already an array (newly written): copy and validate item shape.
+	if (Array.isArray(raw)) {
+		return raw
+			.filter(it => it && typeof it === 'object')
+			.map(it => ({ text: String(it.text || ''), done: !!it.done }));
+	}
+	// Firebase-style object with numeric-string keys: collect, sort, then map.
+	if (typeof raw === 'object') {
+		return Object.keys(raw)
+			.sort((a, b) => Number(a) - Number(b))
+			.map(k => raw[k])
+			.filter(it => it && typeof it === 'object')
+			.map(it => ({ text: String(it.text || ''), done: !!it.done }));
+	}
+	return [];
+}
+
+function getChecklist(taskId) {
+	const task = currentTasks[taskId];
+	return task ? normalizeChecklist(task.checklist) : [];
+}
+
+function saveChecklist(taskId, items) {
+	// Strip empty-text items on save — they shouldn't persist. Done flag
+	// on an empty item is meaningless. Adding a new item is non-empty by
+	// design (we don't write until they type).
+	const cleaned = items
+		.filter(it => (it.text || '').trim() !== '')
+		.map(it => ({ text: it.text.trim(), done: !!it.done }));
+
+	// Firebase: writing an empty array writes nothing (the field is
+	// removed). Use null explicitly to remove the field, otherwise write
+	// the array.
+	const value = cleaned.length === 0 ? null : cleaned;
+	return tasksRef.child(taskId).child('checklist').set(value).catch(err => {
+		console.error('checklist save failed:', err);
+	});
+}
+
 function markDone(id) {
 	const task = currentTasks[id];
 	if (!task) return;
@@ -338,7 +389,7 @@ function attachSwipeHandlers(taskEl, id) {
 		if (e.button !== undefined && e.button !== 0) return;   // primary button only
 		// Don't start swipes from interactive children — those have their
 		// own handlers (checkbox toggle, edit button, notes editor).
-		if (e.target.closest('.task-check, .task-edit, .task-notes-indicator, .task-input, .task-notes-editor')) return;
+		if (e.target.closest('.task-check, .task-edit, .task-notes-indicator, .task-checklist-indicator, .task-input, .task-notes-editor, .task-checklist-editor')) return;
 		// Already in edit mode? No swipe.
 		if (taskEl.classList.contains('is-editing')) return;
 
@@ -516,6 +567,171 @@ function setEditMode(id) {
 let sheetTaskId = null;
 let sheetCloseTimerId = null;
 let sheetReturnFocusEl = null;
+let sheetChecklistEditor = null;
+
+/* =========================================================================
+   Checklist editor
+   -------------------------------------------------------------------------
+   Shared by both the mobile sheet and the desktop inline editor. Given a
+   container element and a task id, builds an editable list with:
+   - tick checkbox per item (toggles done, strikes through text)
+   - text input per item
+   - up/down arrows to reorder
+   - × to delete
+   - "+ Add item" row at the bottom
+
+   Keeps a local `items` array as the source of truth during editing.
+   Returns a getItems() function so the caller can persist on save.
+   ========================================================================= */
+
+function buildChecklistEditor(container, taskId) {
+	let items = getChecklist(taskId);
+
+	// Persistent textarea-style behavior: writes to Firebase happen on
+	// blur/change of each input (autosave). Reordering, toggling, adding,
+	// and deleting all write immediately. The 'isEditing' flag suppresses
+	// the live-listener re-render so these writes don't yank our inputs.
+	const rebuild = () => {
+		container.innerHTML = '';
+		container.appendChild(renderList());
+	};
+
+	const persist = () => {
+		// Write the current local state. The live listener will echo
+		// back but is suppressed by isEditing.
+		saveChecklist(taskId, items);
+	};
+
+	function renderList() {
+		const wrap = document.createElement('div');
+		wrap.className = 'cl-list';
+
+		items.forEach((it, idx) => {
+			wrap.appendChild(renderRow(it, idx));
+		});
+
+		// "+ Add item" row stays at the bottom.
+		const addBtn = document.createElement('button');
+		addBtn.type = 'button';
+		addBtn.className = 'cl-add';
+		addBtn.innerHTML = `
+			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+				<line x1="12" y1="5" x2="12" y2="19"/>
+				<line x1="5" y1="12" x2="19" y2="12"/>
+			</svg>
+			<span>Add item</span>
+		`;
+		addBtn.addEventListener('click', () => {
+			items.push({ text: '', done: false });
+			rebuild();
+			// Focus the new item's text input immediately.
+			const lastInput = wrap.parentElement
+				? wrap.parentElement.querySelector('.cl-list .cl-row:last-of-type .cl-text')
+				: null;
+			if (lastInput) lastInput.focus();
+		});
+		wrap.appendChild(addBtn);
+
+		return wrap;
+	}
+
+	function renderRow(it, idx) {
+		const row = document.createElement('div');
+		row.className = 'cl-row' + (it.done ? ' is-done' : '');
+
+		const check = document.createElement('button');
+		check.type = 'button';
+		check.className = 'cl-check';
+		check.setAttribute('aria-label', 'Toggle done');
+		check.setAttribute('aria-pressed', String(!!it.done));
+		check.addEventListener('click', () => {
+			items[idx].done = !items[idx].done;
+			row.classList.toggle('is-done', items[idx].done);
+			check.setAttribute('aria-pressed', String(items[idx].done));
+			persist();
+		});
+
+		const text = document.createElement('input');
+		text.type = 'text';
+		text.className = 'cl-text';
+		text.value = it.text;
+		text.placeholder = 'Item';
+		text.addEventListener('input', () => {
+			// Update local state on every keystroke (so reorder picks up
+			// in-flight text), but only write on blur to avoid spamming
+			// Firebase with one write per character.
+			items[idx].text = text.value;
+		});
+		text.addEventListener('change', persist);
+		text.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				// Enter at end of an item creates a new item below.
+				items[idx].text = text.value;
+				items.splice(idx + 1, 0, { text: '', done: false });
+				persist();
+				rebuild();
+				// Focus the newly inserted item.
+				const rows = container.querySelectorAll('.cl-row .cl-text');
+				if (rows[idx + 1]) rows[idx + 1].focus();
+			} else if (e.key === 'Escape') {
+				text.blur();
+			}
+		});
+
+		// Reorder controls: up + down arrows. Disabled at boundaries.
+		const upBtn = document.createElement('button');
+		upBtn.type = 'button';
+		upBtn.className = 'cl-move';
+		upBtn.setAttribute('aria-label', 'Move up');
+		upBtn.disabled = idx === 0;
+		upBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>`;
+		upBtn.addEventListener('click', () => {
+			if (idx === 0) return;
+			[items[idx - 1], items[idx]] = [items[idx], items[idx - 1]];
+			persist();
+			rebuild();
+		});
+
+		const downBtn = document.createElement('button');
+		downBtn.type = 'button';
+		downBtn.className = 'cl-move';
+		downBtn.setAttribute('aria-label', 'Move down');
+		downBtn.disabled = idx === items.length - 1;
+		downBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+		downBtn.addEventListener('click', () => {
+			if (idx === items.length - 1) return;
+			[items[idx + 1], items[idx]] = [items[idx], items[idx + 1]];
+			persist();
+			rebuild();
+		});
+
+		const del = document.createElement('button');
+		del.type = 'button';
+		del.className = 'cl-delete';
+		del.setAttribute('aria-label', 'Delete item');
+		del.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+		del.addEventListener('click', () => {
+			items.splice(idx, 1);
+			persist();
+			rebuild();
+		});
+
+		row.appendChild(check);
+		row.appendChild(text);
+		row.appendChild(upBtn);
+		row.appendChild(downBtn);
+		row.appendChild(del);
+
+		return row;
+	}
+
+	container.innerHTML = '';
+	container.appendChild(renderList());
+
+	// Caller can read the final state when committing the parent editor.
+	return { getItems: () => items, persist };
+}
 
 function openEditSheet(id) {
 	const task = currentTasks[id];
@@ -531,6 +747,13 @@ function openEditSheet(id) {
 	// have either field. `|| ''` collapses missing/null/undefined to empty.
 	document.getElementById('sheetTime').value    = task.due_time || '';
 	document.getElementById('sheetNotes').value   = task.notes    || '';
+
+	// Build the checklist editor. The autosave-on-blur pattern in the
+	// editor means we don't need to capture a reference here — but
+	// closing the sheet calls persist() one final time to flush any
+	// in-flight text changes.
+	const checklistContainer = document.getElementById('sheetChecklist');
+	sheetChecklistEditor = buildChecklistEditor(checklistContainer, id);
 
 	const backdrop = document.getElementById('sheetBackdrop');
 	const sheet    = document.getElementById('sheet');
@@ -567,6 +790,14 @@ function closeEditSheet({ save = true } = {}) {
 	const finalSubject = subjectInput ? subjectInput.value : '';
 
 	if (save) commitEditSheet();
+
+	// Flush any in-flight text edits in the checklist editor. Toggle/
+	// reorder/delete autosave, but a partially-typed text input may not
+	// have fired its 'change' event yet.
+	if (sheetChecklistEditor) {
+		sheetChecklistEditor.persist();
+		sheetChecklistEditor = null;
+	}
 
 	cleanupEmptyNewTask(id, finalSubject);
 
@@ -689,6 +920,20 @@ function setInlineEditMode(id) {
 	notesWrap.appendChild(notesTa);
 	row.appendChild(notesWrap);
 
+	// Inline checklist editor as a second full-width row after notes.
+	// Same buildChecklistEditor() as the sheet — single source of truth.
+	const checklistWrap = document.createElement('div');
+	checklistWrap.className = 'task-checklist-editor';
+	const checklistLabel = document.createElement('div');
+	checklistLabel.className = 'task-checklist-label';
+	checklistLabel.textContent = 'Checklist';
+	const checklistInner = document.createElement('div');
+	checklistWrap.appendChild(checklistLabel);
+	checklistWrap.appendChild(checklistInner);
+	row.appendChild(checklistWrap);
+	const inlineChecklistEditor = buildChecklistEditor(checklistInner, id);
+	row.__inlineChecklistEditor = inlineChecklistEditor;
+
 	const subjectInput = document.getElementById("subject" + id);
 	const projectInput = document.getElementById("project" + id);
 	const dueInput     = document.getElementById("due" + id);
@@ -716,6 +961,10 @@ function setInlineEditMode(id) {
 				// have echoed back the latest typed value yet).
 				const subjectInputEl = document.getElementById("subject" + id);
 				const finalSubject = subjectInputEl ? subjectInputEl.value : '';
+				// Flush any in-flight checklist text edits before render().
+				if (row.__inlineChecklistEditor) {
+					row.__inlineChecklistEditor.persist();
+				}
 				cleanupEmptyNewTask(id, finalSubject);
 				render();
 			}
@@ -1162,6 +1411,12 @@ function render() {
 			</button>`
 			: '';
 
+		// Compact checklist counter: shown only when checklist is non-empty.
+		const checklist = normalizeChecklist(task.checklist);
+		const checklistIndicator = checklist.length > 0
+			? `<span class="task-checklist-indicator" aria-label="${checklist.filter(it => it.done).length} of ${checklist.length} done">${checklist.filter(it => it.done).length}/${checklist.length}</span>`
+			: '';
+
 		// Optional time chip after the subject. Tasks without due_time
 		// render no chip at all (no element, no whitespace).
 		const timeStr = task.due_time || '';
@@ -1175,6 +1430,7 @@ function render() {
 				<div class="task-subject">${escapeHtml(task.subject || '')}</div>
 				${timeChip}
 				${notesIndicator}
+				${checklistIndicator}
 			</div>
 			<span class="task-project">${escapeHtml(task.project || '')}</span>
 			<span class="task-due ${due.cls}" data-iso="${escapeHtml(task.due_date || '')}">${escapeHtml(due.label)}</span>
