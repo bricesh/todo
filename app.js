@@ -1266,89 +1266,122 @@ function renderKanbanView(ids) {
    ========================================================================= */
 
 /* =========================================================================
-   Notes popover
+   Indicator popovers (notes + checklist)
    -------------------------------------------------------------------------
-   Tap the notes icon on a task row → show the notes text in a small
-   floating popover anchored to the icon. Single popover instance lives
-   in document.body, positioned absolutely. Dismisses on outside-click,
+   Tap a task's notes or checklist indicator → show the content in a small
+   floating popover anchored to the icon. Single popover instance lives in
+   document.body, positioned absolutely. Dismisses on outside-click,
    Escape, scroll, resize, or another popover-open.
+
+   Builders are registered per-kind ('notes', 'checklist') and produce the
+   inner content element from a taskId.
    ========================================================================= */
 
-let openNotesPopover = null;        // { btn, id, el } or null
+let openPopover = null;       // { btn, id, kind, el } or null
 
-function toggleNotesPopover(btn, id) {
-	if (openNotesPopover && openNotesPopover.btn === btn) {
-		closeNotesPopover();
+const POPOVER_BUILDERS = {
+	notes: (taskId) => {
+		const notes = (currentTasks[taskId]?.notes || '').trim();
+		if (!notes) return null;
+		const content = document.createElement('div');
+		content.className = 'popover-text';
+		content.textContent = notes;
+		return content;
+	},
+	checklist: (taskId) => {
+		const items = getChecklist(taskId);
+		const pending = items.filter(it => !it.done);
+		const list = document.createElement('ul');
+		list.className = 'popover-checklist';
+		if (pending.length === 0) {
+			const empty = document.createElement('li');
+			empty.className = 'popover-checklist-empty';
+			empty.textContent = items.length === 0
+				? 'No items'
+				: 'All items done';
+			list.appendChild(empty);
+		} else {
+			pending.forEach(it => {
+				const li = document.createElement('li');
+				li.className = 'popover-checklist-item';
+				li.textContent = it.text;
+				list.appendChild(li);
+			});
+		}
+		return list;
+	}
+};
+
+function togglePopover(btn, id, kind) {
+	if (openPopover && openPopover.btn === btn) {
+		closePopover();
 		return;
 	}
-	openNotesPopover && closeNotesPopover();
-	openNotesPopoverFor(btn, id);
+	openPopover && closePopover();
+	openPopoverFor(btn, id, kind);
 }
 
-function openNotesPopoverFor(btn, id) {
-	const task = currentTasks[id];
-	if (!task) return;
-	const notes = (task.notes || '').trim();
-	if (!notes) return;
+function openPopoverFor(btn, id, kind) {
+	const builder = POPOVER_BUILDERS[kind];
+	if (!builder) return;
+	const content = builder(id);
+	if (!content) return;
 
 	const pop = document.createElement('div');
-	pop.className = 'notes-popover';
+	pop.className = 'task-popover';
 	pop.setAttribute('role', 'dialog');
-	pop.setAttribute('aria-label', 'Notes');
-
-	const content = document.createElement('div');
-	content.className = 'notes-popover-content';
-	// textContent preserves linebreaks-as-newlines; CSS white-space: pre-wrap
-	// renders them as visible line breaks.
-	content.textContent = notes;
+	pop.setAttribute('aria-label', kind);
 	pop.appendChild(content);
 
 	document.body.appendChild(pop);
 	btn.setAttribute('aria-expanded', 'true');
 
-	positionNotesPopover(pop, btn);
+	positionPopover(pop, btn);
 
-	openNotesPopover = { btn, id, el: pop };
+	openPopover = { btn, id, kind, el: pop };
 
 	// Defer attaching dismiss listeners by a tick so the click that
 	// opened us doesn't immediately close us via document handler.
 	setTimeout(() => {
 		document.addEventListener('pointerdown', onDocumentPointerDownForPopover, true);
 		document.addEventListener('keydown', onPopoverKey, true);
-		window.addEventListener('scroll', closeNotesPopover, true);
-		window.addEventListener('resize', closeNotesPopover);
+		window.addEventListener('scroll', closePopover, true);
+		window.addEventListener('resize', closePopover);
 	}, 0);
 }
 
-function closeNotesPopover() {
-	if (!openNotesPopover) return;
-	const { btn, el } = openNotesPopover;
-	openNotesPopover = null;
+function closePopover() {
+	if (!openPopover) return;
+	const { btn, el } = openPopover;
+	openPopover = null;
 
 	btn.setAttribute('aria-expanded', 'false');
 	el.remove();
 
 	document.removeEventListener('pointerdown', onDocumentPointerDownForPopover, true);
 	document.removeEventListener('keydown', onPopoverKey, true);
-	window.removeEventListener('scroll', closeNotesPopover, true);
-	window.removeEventListener('resize', closeNotesPopover);
+	window.removeEventListener('scroll', closePopover, true);
+	window.removeEventListener('resize', closePopover);
 }
 
 function onDocumentPointerDownForPopover(e) {
-	if (!openNotesPopover) return;
-	if (e.target.closest('.notes-popover')) return;          // tap inside popover stays open
-	if (e.target.closest('.task-notes-indicator')) return;   // let toggle decide
-	closeNotesPopover();
+	if (!openPopover) return;
+	// Taps inside the popover stay open.
+	if (e.target.closest('.task-popover')) return;
+	// Taps on any indicator button — let its toggle handler decide what
+	// to do (close-and-reopen if it's a different button, etc).
+	if (e.target.closest('.task-notes-indicator, .task-checklist-indicator')) return;
+	closePopover();
 }
 
 function onPopoverKey(e) {
-	if (e.key === 'Escape') closeNotesPopover();
+	if (e.key === 'Escape') closePopover();
 }
 
-function positionNotesPopover(pop, btn) {
-	// Anchor the popover to the indicator button. Default: below + to the
-	// right of the icon. If that overflows the viewport, reflect across
-	// axes so it stays on-screen.
+function positionPopover(pop, btn) {
+	// Anchor the popover to the indicator button. Default: below the
+	// icon. If that overflows the viewport, flip across axes so it
+	// stays on-screen.
 	const PAD = 8;
 	const VIEWPORT_PAD = 12;
 	const btnRect = btn.getBoundingClientRect();
@@ -1361,11 +1394,9 @@ function positionNotesPopover(pop, btn) {
 	let top = btnRect.bottom + PAD;
 	let left = btnRect.left;
 
-	// Flip up if not enough room below.
 	if (top + popRect.height > window.innerHeight - VIEWPORT_PAD) {
 		top = Math.max(VIEWPORT_PAD, btnRect.top - PAD - popRect.height);
 	}
-	// Slide left if overflowing right edge.
 	if (left + popRect.width > window.innerWidth - VIEWPORT_PAD) {
 		left = Math.max(VIEWPORT_PAD, window.innerWidth - VIEWPORT_PAD - popRect.width);
 	}
@@ -1375,9 +1406,9 @@ function positionNotesPopover(pop, btn) {
 }
 
 function render() {
-	// Re-rendering rebuilds the task rows, so the indicator button the
-	// popover is anchored to will be destroyed. Close it pre-emptively.
-	if (openNotesPopover) closeNotesPopover();
+	// Re-rendering rebuilds the task rows, so any indicator the popover
+	// is anchored to will be destroyed. Close it pre-emptively.
+	if (openPopover) closePopover();
 	const taskBody     = document.getElementById('taskBody');
 	const emptyState   = document.getElementById('emptyState');
 	const taskCount    = document.getElementById('taskCount');
@@ -1435,9 +1466,12 @@ function render() {
 			: '';
 
 		// Compact checklist counter: shown only when checklist is non-empty.
+		// Rendered as a button so tapping it opens a popover with the
+		// pending items.
 		const checklist = normalizeChecklist(task.checklist);
+		const checklistDone = checklist.filter(it => it.done).length;
 		const checklistIndicator = checklist.length > 0
-			? `<span class="task-checklist-indicator" aria-label="${checklist.filter(it => it.done).length} of ${checklist.length} done">${checklist.filter(it => it.done).length}/${checklist.length}</span>`
+			? `<button class="task-checklist-indicator" type="button" aria-label="Show checklist (${checklistDone} of ${checklist.length} done)" aria-expanded="false">${checklistDone}/${checklist.length}</button>`
 			: '';
 
 		// Optional time chip after the subject. Tasks without due_time
@@ -1477,7 +1511,15 @@ function render() {
 				// Don't let the click bubble to swipe handlers or open
 				// the edit sheet — popover is a peer interaction.
 				e.stopPropagation();
-				toggleNotesPopover(notesBtn, id);
+				togglePopover(notesBtn, id, 'notes');
+			});
+		}
+
+		const checklistBtn = row.querySelector('.task-checklist-indicator');
+		if (checklistBtn) {
+			checklistBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				togglePopover(checklistBtn, id, 'checklist');
 			});
 		}
 	});
