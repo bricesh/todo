@@ -476,20 +476,54 @@ body {
   white-space: nowrap;
 }
 
-/* Subtle indicator: a small page-with-line icon to the right of the subject
-   on tasks that have notes. Tasks without notes simply don't render it. */
+/* Tappable notes indicator: a small page-with-line icon to the right of
+   the subject on tasks that have notes. Tap it to peek at the notes in
+   a popover. Tasks without notes simply don't render it. */
 .task-notes-indicator {
   flex-shrink: 0;
-  width: 12px;
-  height: 12px;
+  /* Larger hit area than the visual size — easier to tap on mobile and
+     with a mouse. Padding gives the SVG breathing room inside the box. */
+  width: 28px;
+  height: 28px;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
   color: var(--text-dim);
   opacity: 0.65;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.task-notes-indicator svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .task:hover .task-notes-indicator {
   opacity: 0.95;
   color: var(--accent);
+}
+
+.task-notes-indicator:hover {
+  background: var(--border);
+  color: var(--accent);
+  opacity: 1;
+}
+
+.task-notes-indicator[aria-expanded="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  opacity: 1;
+}
+
+.task-notes-indicator:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
 }
 
 /* When the row enters inline edit mode, the subject element is replaced
@@ -972,6 +1006,54 @@ body {
 .sheet-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ============================================================
+   NOTES POPOVER
+   ============================================================ */
+
+.notes-popover {
+  position: absolute;
+  z-index: 60;
+  max-width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: notesPopoverIn 0.16s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@keyframes notesPopoverIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+.notes-popover-content {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  /* Render multi-line notes as-is; preserve user line breaks. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.notes-popover::-webkit-scrollbar { width: 6px; }
+.notes-popover::-webkit-scrollbar-track { background: transparent; }
+.notes-popover::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+/* On narrow viewports the popover stretches to nearly the full width
+   so long notes don't get cramped into a tiny floating box. */
+@media (max-width: 600px) {
+  .notes-popover {
+    max-width: calc(100vw - 24px);
+  }
 }
 
 /* ============================================================

@@ -338,7 +338,7 @@ function attachSwipeHandlers(taskEl, id) {
 		if (e.button !== undefined && e.button !== 0) return;   // primary button only
 		// Don't start swipes from interactive children — those have their
 		// own handlers (checkbox toggle, edit button, notes editor).
-		if (e.target.closest('.task-check, .task-edit, .task-input, .task-notes-editor')) return;
+		if (e.target.closest('.task-check, .task-edit, .task-notes-indicator, .task-input, .task-notes-editor')) return;
 		// Already in edit mode? No swipe.
 		if (taskEl.classList.contains('is-editing')) return;
 
@@ -993,7 +993,119 @@ function renderKanbanView(ids) {
    Render
    ========================================================================= */
 
+/* =========================================================================
+   Notes popover
+   -------------------------------------------------------------------------
+   Tap the notes icon on a task row → show the notes text in a small
+   floating popover anchored to the icon. Single popover instance lives
+   in document.body, positioned absolutely. Dismisses on outside-click,
+   Escape, scroll, resize, or another popover-open.
+   ========================================================================= */
+
+let openNotesPopover = null;        // { btn, id, el } or null
+
+function toggleNotesPopover(btn, id) {
+	if (openNotesPopover && openNotesPopover.btn === btn) {
+		closeNotesPopover();
+		return;
+	}
+	openNotesPopover && closeNotesPopover();
+	openNotesPopoverFor(btn, id);
+}
+
+function openNotesPopoverFor(btn, id) {
+	const task = currentTasks[id];
+	if (!task) return;
+	const notes = (task.notes || '').trim();
+	if (!notes) return;
+
+	const pop = document.createElement('div');
+	pop.className = 'notes-popover';
+	pop.setAttribute('role', 'dialog');
+	pop.setAttribute('aria-label', 'Notes');
+
+	const content = document.createElement('div');
+	content.className = 'notes-popover-content';
+	// textContent preserves linebreaks-as-newlines; CSS white-space: pre-wrap
+	// renders them as visible line breaks.
+	content.textContent = notes;
+	pop.appendChild(content);
+
+	document.body.appendChild(pop);
+	btn.setAttribute('aria-expanded', 'true');
+
+	positionNotesPopover(pop, btn);
+
+	openNotesPopover = { btn, id, el: pop };
+
+	// Defer attaching dismiss listeners by a tick so the click that
+	// opened us doesn't immediately close us via document handler.
+	setTimeout(() => {
+		document.addEventListener('pointerdown', onDocumentPointerDownForPopover, true);
+		document.addEventListener('keydown', onPopoverKey, true);
+		window.addEventListener('scroll', closeNotesPopover, true);
+		window.addEventListener('resize', closeNotesPopover);
+	}, 0);
+}
+
+function closeNotesPopover() {
+	if (!openNotesPopover) return;
+	const { btn, el } = openNotesPopover;
+	openNotesPopover = null;
+
+	btn.setAttribute('aria-expanded', 'false');
+	el.remove();
+
+	document.removeEventListener('pointerdown', onDocumentPointerDownForPopover, true);
+	document.removeEventListener('keydown', onPopoverKey, true);
+	window.removeEventListener('scroll', closeNotesPopover, true);
+	window.removeEventListener('resize', closeNotesPopover);
+}
+
+function onDocumentPointerDownForPopover(e) {
+	if (!openNotesPopover) return;
+	if (e.target.closest('.notes-popover')) return;          // tap inside popover stays open
+	if (e.target.closest('.task-notes-indicator')) return;   // let toggle decide
+	closeNotesPopover();
+}
+
+function onPopoverKey(e) {
+	if (e.key === 'Escape') closeNotesPopover();
+}
+
+function positionNotesPopover(pop, btn) {
+	// Anchor the popover to the indicator button. Default: below + to the
+	// right of the icon. If that overflows the viewport, reflect across
+	// axes so it stays on-screen.
+	const PAD = 8;
+	const VIEWPORT_PAD = 12;
+	const btnRect = btn.getBoundingClientRect();
+
+	// Render at 0,0 first to measure the popover's natural size.
+	pop.style.left = '0px';
+	pop.style.top = '0px';
+	const popRect = pop.getBoundingClientRect();
+
+	let top = btnRect.bottom + PAD;
+	let left = btnRect.left;
+
+	// Flip up if not enough room below.
+	if (top + popRect.height > window.innerHeight - VIEWPORT_PAD) {
+		top = Math.max(VIEWPORT_PAD, btnRect.top - PAD - popRect.height);
+	}
+	// Slide left if overflowing right edge.
+	if (left + popRect.width > window.innerWidth - VIEWPORT_PAD) {
+		left = Math.max(VIEWPORT_PAD, window.innerWidth - VIEWPORT_PAD - popRect.width);
+	}
+
+	pop.style.left = `${left + window.scrollX}px`;
+	pop.style.top  = `${top  + window.scrollY}px`;
+}
+
 function render() {
+	// Re-rendering rebuilds the task rows, so the indicator button the
+	// popover is anchored to will be destroyed. Close it pre-emptively.
+	if (openNotesPopover) closeNotesPopover();
 	const taskBody     = document.getElementById('taskBody');
 	const emptyState   = document.getElementById('emptyState');
 	const taskCount    = document.getElementById('taskCount');
@@ -1045,7 +1157,9 @@ function render() {
 		// notes content. Older tasks may not have a `notes` field at all.
 		const hasNotes = ((task.notes || '').trim() !== '');
 		const notesIndicator = hasNotes
-			? `<svg class="task-notes-indicator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Has notes"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>`
+			? `<button class="task-notes-indicator" type="button" data-notes-for="${escapeHtml(id)}" aria-label="Show notes" aria-expanded="false">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+			</button>`
 			: '';
 
 		// Optional time chip after the subject. Tasks without due_time
@@ -1077,6 +1191,16 @@ function render() {
 		document.getElementById("done" + id).addEventListener("click", () => markDone(id));
 		document.getElementById("edit" + id).addEventListener("click", () => setEditMode(id));
 		attachSwipeHandlers(row, id);
+
+		const notesBtn = row.querySelector('.task-notes-indicator');
+		if (notesBtn) {
+			notesBtn.addEventListener('click', (e) => {
+				// Don't let the click bubble to swipe handlers or open
+				// the edit sheet — popover is a peer interaction.
+				e.stopPropagation();
+				toggleNotesPopover(notesBtn, id);
+			});
+		}
 	});
 
 	// If a task was just created via the FAB, open its editor now that
