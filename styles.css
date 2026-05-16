@@ -1379,15 +1379,15 @@ body.show-landscape-views .fab { display: none; }
     line-height: 1.35;
   }
 
-  /* Notes indicator: column 2 of the subject row. */
-  .task-notes-indicator {
+  /* Checklist indicator: column 2 of the subject row. */
+  .task-checklist-indicator {
     grid-column: 2;
     grid-row: 1;
     align-self: center;
   }
 
-  /* Checklist indicator: column 3 of the subject row. */
-  .task-checklist-indicator {
+  /* Notes indicator: column 3 of the subject row. */
+  .task-notes-indicator {
     grid-column: 3;
     grid-row: 1;
     align-self: center;

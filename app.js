@@ -587,6 +587,20 @@ let sheetChecklistEditor = null;
 function buildChecklistEditor(container, taskId) {
 	let items = getChecklist(taskId);
 
+	// After a rebuild, focus a stable element inside `container` so the
+	// row's focusout handler doesn't see "focus left the row" and tear
+	// down the whole inline editor. Targets the text input at the given
+	// index, falling back to the Add button when the list is empty.
+	const focusRowText = (cont, idx) => {
+		const rows = cont.querySelectorAll('.cl-row .cl-text');
+		if (rows[idx]) {
+			rows[idx].focus();
+		} else {
+			const addBtn = cont.querySelector('.cl-add');
+			if (addBtn) addBtn.focus();
+		}
+	};
+
 	// Persistent textarea-style behavior: writes to Firebase happen on
 	// blur/change of each input (autosave). Reordering, toggling, adding,
 	// and deleting all write immediately. The 'isEditing' flag suppresses
@@ -624,11 +638,10 @@ function buildChecklistEditor(container, taskId) {
 		addBtn.addEventListener('click', () => {
 			items.push({ text: '', done: false });
 			rebuild();
-			// Focus the new item's text input immediately.
-			const lastInput = wrap.parentElement
-				? wrap.parentElement.querySelector('.cl-list .cl-row:last-of-type .cl-text')
-				: null;
-			if (lastInput) lastInput.focus();
+			// Focus the newly added (last) text input. container is stable
+			// across rebuilds, unlike wrap which gets replaced by rebuild().
+			const rows = container.querySelectorAll('.cl-row .cl-text');
+			if (rows.length) rows[rows.length - 1].focus();
 		});
 		wrap.appendChild(addBtn);
 
@@ -649,6 +662,10 @@ function buildChecklistEditor(container, taskId) {
 			row.classList.toggle('is-done', items[idx].done);
 			check.setAttribute('aria-pressed', String(items[idx].done));
 			persist();
+			// Ensure focus stays inside the row. Safari/Firefox sometimes
+			// don't focus buttons on click; that would let the row's
+			// focusout teardown fire after 120ms.
+			check.focus();
 		});
 
 		const text = document.createElement('input');
@@ -691,6 +708,7 @@ function buildChecklistEditor(container, taskId) {
 			[items[idx - 1], items[idx]] = [items[idx], items[idx - 1]];
 			persist();
 			rebuild();
+			focusRowText(container, idx - 1);
 		});
 
 		const downBtn = document.createElement('button');
@@ -704,6 +722,7 @@ function buildChecklistEditor(container, taskId) {
 			[items[idx + 1], items[idx]] = [items[idx], items[idx + 1]];
 			persist();
 			rebuild();
+			focusRowText(container, idx + 1);
 		});
 
 		const del = document.createElement('button');
@@ -715,6 +734,10 @@ function buildChecklistEditor(container, taskId) {
 			items.splice(idx, 1);
 			persist();
 			rebuild();
+			// After delete, focus the item that "took" this slot, or the
+			// previous one if we deleted the last item. Falls back to the
+			// add button if the list is now empty.
+			focusRowText(container, Math.min(idx, items.length - 1));
 		});
 
 		row.appendChild(check);
@@ -1428,9 +1451,9 @@ function render() {
 			<button class="task-check" type="button" id="done${id}" aria-label="Mark done"></button>
 			<div class="task-content">
 				<div class="task-subject">${escapeHtml(task.subject || '')}</div>
+				${checklistIndicator}
 				${timeChip}
 				${notesIndicator}
-				${checklistIndicator}
 			</div>
 			<span class="task-project">${escapeHtml(task.project || '')}</span>
 			<span class="task-due ${due.cls}" data-iso="${escapeHtml(task.due_date || '')}">${escapeHtml(due.label)}</span>
