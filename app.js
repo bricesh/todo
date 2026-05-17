@@ -306,6 +306,17 @@ function tomorrowIso() {
 	return isoDate(t);
 }
 
+// Format a Date as "YYYY-MM-DD HH:MM:SS" in local time. Matches the
+// shape expected on task.created_at — human-readable, sort-friendly,
+// no timezone suffix (consistent with how due_date is also stored
+// in local-time YYYY-MM-DD).
+function nowTimestamp() {
+	const d = new Date();
+	const pad = (n) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+	       `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function createNewTask() {
 	const newRef = tasksRef.push();
 	const id = newRef.key;
@@ -317,7 +328,8 @@ function createNewTask() {
 		subject: '',
 		project: '',
 		due_date: tomorrowIso(),
-		done: false
+		done: false,
+		created_at: nowTimestamp()
 	}).catch(err => {
 		console.error('createNewTask failed:', err);
 		newlyCreatedIds.delete(id);
